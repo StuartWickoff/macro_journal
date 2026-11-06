@@ -11,6 +11,13 @@ leptos = { version = "0.8.23", features = ["csr"] }
 macro-journal-shared = { path = "../../crates/shared" }
 pulldown-cmark = "0.13.6"
 serde = { version = "1", features = ["derive"] }
+web-sys = { version = "0.3", features = [
+    "Window",
+    "Document",
+    "Element",
+    "HtmlDocument",
+    "HtmlTextAreaElement",
+] }
 console_error_panic_hook = "0.1"
 
 [dev-dependencies]

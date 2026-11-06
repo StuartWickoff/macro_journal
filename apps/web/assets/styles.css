@@ -777,3 +777,18 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .veille-links a:hover { border-color: var(--accent); background: var(--panel-raised); }
 .veille-link-title { font-size: 13.5px; font-weight: 600; color: var(--ink); }
 .veille-link-note { font-size: 11.5px; color: var(--subtle); text-align: right; }
+
+/* ===== Préparation hebdomadaire · packs de contexte ===== */
+.pack-strip { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 18px; padding: 20px; border: 1px dashed var(--line); border-radius: 16px; background: var(--panel-raised); }
+.pack-strip-copy { max-width: 560px; }
+.pack-strip-copy h2 { margin: 6px 0 6px; font-size: 18px; }
+.pack-strip-copy p { margin: 0; color: var(--muted); font-size: 12.5px; line-height: 1.55; }
+.pack-strip-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.pack-status { flex-basis: 100%; font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--subtle); }
+.pack-overlay { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: rgba(6, 10, 10, .62); padding: 26px; }
+.pack-modal { display: flex; flex-direction: column; gap: 14px; width: min(860px, 100%); max-height: 88vh; padding: 26px 28px; border: 1px solid var(--line); border-radius: 18px; background: var(--panel-raised); box-shadow: 0 30px 80px rgba(0, 0, 0, .45); }
+.pack-modal-head h2 { margin: 6px 0 6px; font-size: 20px; }
+.pack-modal-head p { margin: 0; color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+.pack-textarea { flex: 1; min-height: 320px; resize: vertical; padding: 16px 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--ink); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; line-height: 1.55; }
+.pack-modal-foot { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
+.pack-modal-foot .pack-status { flex: none; margin-right: auto; flex-basis: auto; }

@@ -4,6 +4,7 @@ use leptos::task::spawn_local;
 use macro_journal_shared::{Entry, EntryDraft};
 use pulldown_cmark::{html, Event, Options, Parser};
 use serde::{Deserialize, Serialize};
+use web_sys::wasm_bindgen::JsCast;
 
 const API_BASE: &str = "http://127.0.0.1:3000";
 
@@ -313,15 +314,275 @@ async fn fetch_veille_resources() -> Result<Vec<ResourceGroup>, String> {
         .map_err(|error| error.to_string())
 }
 
+/// Série suivies par devise dans le pack hebdo (l'inflation principale est
+/// choisie selon la source du pays ; le taux directeur et le chômage font office de socle).
+fn pack_series_ids(code: &str) -> &'static [&'static str] {
+    match code {
+        "USD" => &[
+            "fed_target_range",
+            "pce_inflation",
+            "unemployment_rate",
+            "nonfarm_payrolls",
+        ],
+        "EUR" => &["policy_rate", "hicp_headline_yoy", "unemployment_rate"],
+        "CAD" => &["policy_rate", "cpi_trimmed", "unemployment_rate"],
+        "AUD" => &["policy_rate", "cpi_trimmed_mean", "unemployment_rate"],
+        _ => &["policy_rate", "cpi_headline_yoy", "unemployment_rate"],
+    }
+}
+
+const PACK_ORDER: [&str; 9] = [
+    "USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "NZD", "CNY",
+];
+
+/// Deux dernières observations d'une série (valeur + date).
+#[derive(Clone, Debug)]
+struct RecentSeries {
+    series_id: String,
+    last: EconomicObservation,
+    prev: Option<EconomicObservation>,
+}
+
+/// Photo d'une devise au moment de la copie du pack.
+#[derive(Clone, Debug, Default)]
+struct CurrencySnapshot {
+    code: &'static str,
+    series: Vec<RecentSeries>,
+    journal_note: Option<String>,
+}
+
+fn recent_series(observations: &[EconomicObservation], ids: &[&'static str]) -> Vec<RecentSeries> {
+    let mut recent = Vec::new();
+    for id in ids {
+        let mut matched: Vec<EconomicObservation> = observations
+            .iter()
+            .filter(|observation| observation.series_id == *id)
+            .cloned()
+            .collect();
+        matched.sort_by(|a, b| b.date.cmp(&a.date));
+        let last = match matched.first() {
+            Some(observation) => observation.clone(),
+            None => continue,
+        };
+        recent.push(RecentSeries {
+            series_id: id.to_string(),
+            last,
+            prev: matched.get(1).cloned(),
+        });
+    }
+    recent
+}
+
+/// Dernière note du journal + dernières observations par devise (les
+/// indisponibilités API sont ignorées : le pack se construit en mode dégradé).
+async fn build_currency_snapshots() -> Vec<CurrencySnapshot> {
+    let mut snapshots = Vec::new();
+    for code in PACK_ORDER {
+        let observations = fetch_economic_observations(code).await.unwrap_or_default();
+        let series = recent_series(&observations, pack_series_ids(code));
+        let journal_note = fetch_entries(code).await.ok().and_then(|entries| {
+            entries
+                .first()
+                .map(|entry| format!("{} ({})", entry.title, format_date(&entry.updated_at)))
+        });
+        snapshots.push(CurrencySnapshot {
+            code,
+            series,
+            journal_note,
+        });
+    }
+    snapshots
+}
+
+fn cot_lines(cot: Option<&[CotChartAsset]>) -> String {
+    match cot {
+        Some(markets) if !markets.is_empty() => markets
+            .iter()
+            .map(|market| {
+                format!(
+                    "- {} — dernière observation {}{}\n",
+                    market.currency,
+                    market.latest_date,
+                    if market.is_stale {
+                        " · observation périmée"
+                    } else {
+                        ""
+                    }
+                )
+            })
+            .collect(),
+        _ => "Indisponible (manifest /cot/manifest.json manquant).\n".to_string(),
+    }
+}
+
+fn compose_weekly_pack(
+    cot: Option<&[CotChartAsset]>,
+    snapshots: &[CurrencySnapshot],
+    groups: &[ResourceGroup],
+) -> String {
+    let mut pack = String::from(
+        "Tu m'aides à préparer ma semaine de trading (méthode de la formation d'analyse fondamentale).\n\
+         Pour chaque devise importante de la semaine :\n\
+         1) fondamentaux purs — politique monétaire et chiffres majeurs ;\n\
+         2) facteurs externes — corrélations, sentiment de risque, géopolitique ;\n\
+         3) positionnement actuel — COT et pricing.\n\
+         Dégage « à quoi s'attendre » (biais court / moyen / long, ou pas d'avis), puis les opportunités les plus probables de la semaine.\n\n",
+    );
+
+    pack.push_str("## Positionnement COT (relevé du vendredi, fenêtre mercredi → mardi)\n");
+    pack.push_str(&cot_lines(cot));
+
+    pack.push_str("\n## Données économiques (2 dernières observations)\n");
+    if snapshots.is_empty() {
+        pack.push_str("Indisponible (API locale hors ligne au moment de la copie).\n");
+    }
+    for snapshot in snapshots {
+        pack.push_str(&format!("\n### {}\n", snapshot.code));
+        if snapshot.series.is_empty() {
+            pack.push_str("- Aucune donnée (API locale hors ligne ou série vide).\n");
+        }
+        for series in &snapshot.series {
+            let previous = series
+                .prev
+                .as_ref()
+                .map(|observation| format!(" | avant {} ({})", observation.value, observation.date))
+                .unwrap_or_default();
+            pack.push_str(&format!(
+                "- {} : {} ({}){}\n",
+                series.series_id, series.last.value, series.last.date, previous
+            ));
+        }
+        if let Some(note) = &snapshot.journal_note {
+            pack.push_str(&format!("- Note journal : {}\n", note));
+        }
+    }
+
+    pack.push_str("\n## Sources à lire (onglet Veille)\n");
+    for group in groups {
+        for link in &group.links {
+            pack.push_str(&format!("- {} — {}\n", link.title, link.url));
+        }
+    }
+
+    pack.push_str("\n## Cadre de réponse attendu\n");
+    pack.push_str(
+        "- Par devise : les 3 blocs, puis « à quoi s'attendre » (court / moyen / long).\n",
+    );
+    pack.push_str("- Maximum 10 lignes par devise. Une surprise hors consensus ET alignée au sens naturel de la devise = setup possible.\n");
+    pack
+}
+
+fn compose_morning_pack(cot: Option<&[CotChartAsset]>, groups: &[ResourceGroup]) -> String {
+    let mut pack = String::from(
+        "Tu m'aides à faire ma lecture du matin (méthode de la formation). Maximum 5 à 10 puces, orientées action de la journée.\n\n",
+    );
+    pack.push_str("1. Sentiment du risque : risk-on / risk-off / neutre — l'indispensable, avant toute autre lecture.\n");
+    pack.push_str("2. Calendrier du jour : annonces majeures (taux, inflation, emploi, PMI). Pas d'entrée technique 2 h autour d'une majeure.\n");
+    pack.push_str("3. Lectures d'ouverture, dans l'ordre :\n");
+    if let Some(morning) = groups.iter().find(|group| group.id == "morning") {
+        for link in &morning.links {
+            pack.push_str(&format!("   - {} — {}\n", link.title, link.url));
+        }
+    }
+    pack.push_str(
+        "\n4. Positionnement COT en vigueur (relevé du vendredi, fenêtre mercredi → mardi) :\n",
+    );
+    pack.push_str(&cot_lines(cot));
+    pack
+}
+
+/// Copie via la sélection : sélectionne toute la zone pack puis
+/// `document.execCommand("copy")` (chemin le plus large, y compris Firefox).
+fn copy_text_to_clipboard() -> bool {
+    select_pack_textarea();
+    let Some(window) = web_sys::window() else {
+        return false;
+    };
+    let Some(document) = window.document() else {
+        return false;
+    };
+    let Ok(document) = document.dyn_into::<web_sys::HtmlDocument>() else {
+        return false;
+    };
+    document.exec_command("copy").unwrap_or(false)
+}
+
+/// Sélectionne tout le contenu de la zone pack (copie manuelle Ctrl+C).
+fn select_pack_textarea() {
+    if let Some(window) = web_sys::window() {
+        if let Some(document) = window.document() {
+            if let Some(element) = document.get_element_by_id("pack-contexte") {
+                if let Ok(textarea) = element.dyn_into::<web_sys::HtmlTextAreaElement>() {
+                    let _ = textarea.focus();
+                    textarea.select();
+                }
+            }
+        }
+    }
+}
+
 /// Onglet « Préparation hebdomadaire » : les liens du rituel de veille,
-/// regroupés par moment de la semaine selon la méthode de la formation.
+/// regroupés par moment de la semaine selon la méthode de la formation,
+/// plus les packs de contexte prêts à coller dans un chat IA externe.
 #[component]
-fn WeeklySection() -> impl IntoView {
+fn WeeklySection(
+    cot_manifest: ReadSignal<Option<Result<Vec<CotChartAsset>, String>>>,
+) -> impl IntoView {
     let (groups, set_groups) = signal::<Option<Result<Vec<ResourceGroup>, String>>>(None);
+    let (pack_text, set_pack_text) = signal::<Option<String>>(None);
+    let (pack_kind, set_pack_kind) = signal("PACK HEBDO (SAMEDI)".to_string());
+    let (pack_status, set_pack_status) = signal(String::new());
 
     spawn_local(async move {
         set_groups.set(Some(fetch_veille_resources().await));
     });
+
+    let generate_weekly = move |_| {
+        set_pack_status.set("GÉNÉRATION EN COURS…".to_string());
+        spawn_local(async move {
+            let snapshots = build_currency_snapshots().await;
+            let cot = cot_manifest.get().and_then(|result| result.ok());
+            let sources = groups
+                .get()
+                .and_then(|result| result.ok())
+                .unwrap_or_default();
+            let pack = compose_weekly_pack(cot.as_deref(), &snapshots, &sources);
+            set_pack_kind.set("PACK HEBDO (SAMEDI)".to_string());
+            set_pack_text.set(Some(pack));
+            set_pack_status.set("PACK GÉNÉRÉ — VÉRIFIEZ, ÉDITEZ, PUIS COPIEZ".to_string());
+        });
+    };
+
+    let generate_morning = move |_| {
+        set_pack_status.set("GÉNÉRATION EN COURS…".to_string());
+        spawn_local(async move {
+            let cot = cot_manifest.get().and_then(|result| result.ok());
+            let sources = groups
+                .get()
+                .and_then(|result| result.ok())
+                .unwrap_or_default();
+            let pack = compose_morning_pack(cot.as_deref(), &sources);
+            set_pack_kind.set("BRIEF DU MATIN".to_string());
+            set_pack_text.set(Some(pack));
+            set_pack_status.set("BRIEF GÉNÉRÉ — VÉRIFIEZ, ÉDITEZ, PUIS COPIEZ".to_string());
+        });
+    };
+
+    let copy_pack = move |_| {
+        if pack_text.get().is_some() {
+            let copied = copy_text_to_clipboard();
+            set_pack_status.set(if copied {
+                "COPIÉ".to_string()
+            } else {
+                "COPIE MANUELLE : SÉLECTIONNEZ TOUT (CTRL+C)".to_string()
+            });
+        }
+    };
+
+    let close_pack = move |_| {
+        set_pack_text.set(None);
+        set_pack_status.set(String::new());
+    };
 
     view! {
         <section class="veille-page">
@@ -329,6 +590,19 @@ fn WeeklySection() -> impl IntoView {
                 <div class="eyebrow"><span class="eyebrow-dot"></span> "PRÉPARATION HEBDOMADAIRE · VEILLE"</div>
                 <h1>"La semaine se prépare la veille."</h1>
                 <p>"Vendredi : relevé COT. Samedi — dimanche : un résumé par devise importante, puis une attente à court / moyen / long terme. Chaque matin vers 7 h : sentiment de risque, puis lectures. Tout est à un clic ci-dessous."</p>
+            </div>
+
+            <div class="pack-strip">
+                <div class="pack-strip-copy">
+                    <div class="eyebrow">"PACKS DE CONTEXTE"</div>
+                    <h2>"Un texte prêt à coller dans votre chat IA."</h2>
+                    <p>"La méthode du cours plus vos dernières données réelles (COT, taux, inflation, chômage, dernière note du journal). L'IA reste dans votre chat : le dash fournit le contexte."</p>
+                </div>
+                <div class="pack-strip-actions">
+                    <button class="button button-quiet" on:click=generate_morning>"Brief du matin"</button>
+                    <button class="button button-primary" on:click=generate_weekly>"Pack hebdo du samedi"</button>
+                </div>
+                <span class="pack-status">{move || pack_status.get()}</span>
             </div>
 
             {move || match groups.get() {
@@ -357,6 +631,30 @@ fn WeeklySection() -> impl IntoView {
                 }
                 .into_any(),
             }}
+
+            <Show when=move || pack_text.get().is_some()>
+                <div class="pack-overlay">
+                    <div class="pack-modal">
+                        <header class="pack-modal-head">
+                            <span class="eyebrow"><span class="eyebrow-dot"></span> {move || pack_kind.get()}</span>
+                            <h2>"Pack de contexte"</h2>
+                            <p>"Collez ce texte dans votre chat IA habituel, générez la synthèse, puis conservez-la dans une note du dossier devise correspondant. Le texte reste éditable avant la copie."</p>
+                        </header>
+                        <textarea
+                            id="pack-contexte"
+                            class="pack-textarea"
+                            prop:value=move || pack_text.get().unwrap_or_default()
+                            on:input=move |event| set_pack_text.set(Some(event_target_value(&event)))
+                        ></textarea>
+                        <footer class="pack-modal-foot">
+                            <span class="pack-status">{move || pack_status.get()}</span>
+                            <button class="button button-quiet" on:click=move |_| select_pack_textarea()>"Sélectionner tout"</button>
+                            <button class="button button-quiet" on:click=close_pack>"Fermer"</button>
+                            <button class="button button-primary" on:click=copy_pack>"Copier"</button>
+                        </footer>
+                    </div>
+                </div>
+            </Show>
         </section>
     }
 }
@@ -1239,7 +1537,7 @@ fn App() -> impl IntoView {
                         }.into_any()
                     } else if active_section.get() == "weekly" {
                         view! {
-                            <WeeklySection/>
+                            <WeeklySection cot_manifest=cot_manifest/>
                         }.into_any()
                     } else {
                         view! {
@@ -2495,5 +2793,92 @@ mod veille_tests {
         assert!(ids.contains(&"cot-friday"));
         assert!(ids.contains(&"weekahead"));
         assert!(ids.contains(&"banks"));
+    }
+
+    fn observation(series_id: &str, date: &str, value: f64) -> EconomicObservation {
+        EconomicObservation {
+            series_id: series_id.to_string(),
+            date: date.to_string(),
+            value,
+            value_secondary: None,
+        }
+    }
+
+    fn practical_group() -> Vec<ResourceGroup> {
+        vec![ResourceGroup {
+            id: "morning".to_string(),
+            title: "Brief du matin".to_string(),
+            timing: "tous les jours".to_string(),
+            description: "…".to_string(),
+            links: vec![ResourceLink {
+                title: "Trading Economics — Calendrier".to_string(),
+                url: "https://tradingeconomics.com/calendar".to_string(),
+                note: String::new(),
+            }],
+        }]
+    }
+
+    fn sample_cot() -> Vec<CotChartAsset> {
+        vec![CotChartAsset {
+            currency: "EUR".to_string(),
+            market_name: "Euro FX".to_string(),
+            chart_file: "eur_net_noncomm_pct_oi.png".to_string(),
+            latest_date: "2026-10-27".to_string(),
+            is_usd_proxy: false,
+            is_usd_aggregate: false,
+            is_stale: true,
+        }]
+    }
+
+    #[test]
+    fn recent_series_keeps_the_two_latest_observations_by_date() {
+        let observations = vec![
+            observation("policy_rate", "2026-07-31", 2.50),
+            observation("policy_rate", "2026-09-30", 2.25),
+            observation("policy_rate", "2026-05-31", 2.75),
+            observation("unemployment_rate", "2026-09-01", 9.2),
+        ];
+        let recent = recent_series(&observations, &["policy_rate"]);
+        assert_eq!(recent.len(), 1);
+        assert_eq!(recent[0].series_id, "policy_rate");
+        assert_eq!(recent[0].last.date, "2026-09-30");
+        assert_eq!(recent[0].last.value, 2.25);
+        let prev = recent[0].prev.as_ref().expect("2e observation attendue");
+        assert_eq!(prev.date, "2026-07-31");
+        assert_eq!(prev.value, 2.50);
+    }
+
+    #[test]
+    fn weekly_pack_contains_cot_series_and_sources() {
+        let snapshots = vec![CurrencySnapshot {
+            code: "EUR",
+            series: vec![RecentSeries {
+                series_id: "policy_rate".to_string(),
+                last: observation("policy_rate", "2026-09-30", 2.25),
+                prev: Some(observation("policy_rate", "2026-07-31", 2.50)),
+            }],
+            journal_note: Some("ECB face aux tarifs (2026-11-05)".to_string()),
+        }];
+        let pack = compose_weekly_pack(Some(&sample_cot()), &snapshots, &practical_group());
+        assert!(pack.contains("## Positionnement COT"));
+        assert!(pack.contains("- EUR — dernière observation 2026-10-27 · observation périmée"));
+        assert!(pack.contains("policy_rate : 2.25 (2026-09-30) | avant 2.5 (2026-07-31)"));
+        assert!(pack.contains("- Note journal : ECB"));
+        assert!(pack.contains("tradingeconomics.com"));
+        assert!(pack.contains("biais court / moyen / long"));
+    }
+
+    #[test]
+    fn weekly_pack_degrades_without_api_and_manifest() {
+        let pack = compose_weekly_pack(None, &[], &[]);
+        assert!(pack.contains("Indisponible"));
+    }
+
+    #[test]
+    fn morning_pack_lists_morning_sources_and_cot_status() {
+        let pack = compose_morning_pack(Some(&sample_cot()), &practical_group());
+        assert!(pack.contains("risk-on"));
+        assert!(pack.contains("https://tradingeconomics.com/calendar"));
+        assert!(pack.contains("- EUR — dernière observation 2026-10-27"));
     }
 }

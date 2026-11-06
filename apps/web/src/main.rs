@@ -273,6 +273,122 @@ fn currency_info(code: &str) -> Option<CurrencyInfo> {
     }
 }
 
+/// Lien d'une ressource de veille (ouvert dans un nouvel onglet).
+#[derive(Clone, Debug, Deserialize)]
+struct ResourceLink {
+    title: String,
+    url: String,
+    #[serde(default)]
+    note: String,
+}
+
+/// Groupe de veille du rituel hebdomadaire (matin, vendredi COT, week-end, BC).
+#[derive(Clone, Debug, Deserialize)]
+struct ResourceGroup {
+    id: String,
+    title: String,
+    timing: String,
+    description: String,
+    links: Vec<ResourceLink>,
+}
+
+/// Racine de `veille/links.json`.
+#[derive(Debug, Deserialize)]
+struct VeilleResources {
+    groups: Vec<ResourceGroup>,
+}
+
+async fn fetch_veille_resources() -> Result<Vec<ResourceGroup>, String> {
+    let response = Request::get("/veille/links.json")
+        .send()
+        .await
+        .map_err(|error| error.to_string())?;
+    if !response.ok() {
+        return Err(format!("HTTP {}", response.status()));
+    }
+    response
+        .json::<VeilleResources>()
+        .await
+        .map(|resources| resources.groups)
+        .map_err(|error| error.to_string())
+}
+
+/// Onglet « Préparation hebdomadaire » : les liens du rituel de veille,
+/// regroupés par moment de la semaine selon la méthode de la formation.
+#[component]
+fn WeeklySection() -> impl IntoView {
+    let (groups, set_groups) = signal::<Option<Result<Vec<ResourceGroup>, String>>>(None);
+
+    spawn_local(async move {
+        set_groups.set(Some(fetch_veille_resources().await));
+    });
+
+    view! {
+        <section class="veille-page">
+            <div class="veille-intro">
+                <div class="eyebrow"><span class="eyebrow-dot"></span> "PRÉPARATION HEBDOMADAIRE · VEILLE"</div>
+                <h1>"La semaine se prépare la veille."</h1>
+                <p>"Vendredi : relevé COT. Samedi — dimanche : un résumé par devise importante, puis une attente à court / moyen / long terme. Chaque matin vers 7 h : sentiment de risque, puis lectures. Tout est à un clic ci-dessous."</p>
+            </div>
+
+            {move || match groups.get() {
+                None => view! {
+                    <p class="veille-status">"Chargement des liens…"</p>
+                }
+                .into_any(),
+                Some(Err(error)) => view! {
+                    <p class="veille-error">{format!(
+                        "Fichier de veille indisponible ({error}). Vérifiez apps/web/public/veille/links.json."
+                    )}</p>
+                }
+                .into_any(),
+                Some(Ok(items)) if items.is_empty() => view! {
+                    <p class="veille-error">"Aucun groupe dans veille/links.json."</p>
+                }
+                .into_any(),
+                Some(Ok(items)) => view! {
+                    <div class="veille-grid">
+                        <For
+                            each=move || items.clone()
+                            key=|group| group.id.clone()
+                            children=move |group| view! { <ResourceGroupCard group/> }
+                        />
+                    </div>
+                }
+                .into_any(),
+            }}
+        </section>
+    }
+}
+
+#[component]
+fn ResourceGroupCard(group: ResourceGroup) -> impl IntoView {
+    let links = group.links.clone();
+    view! {
+        <article class="veille-card">
+            <header class="veille-card-head">
+                <span class="veille-timing">{group.timing.clone()}</span>
+                <h2>{group.title.clone()}</h2>
+                <p>{group.description.clone()}</p>
+            </header>
+            <ul class="veille-links">
+                <For
+                    each=move || links.clone()
+                    key=|link| link.url.clone()
+                    children=move |link| view! {
+                        <li>
+                            <a href=link.url.clone() target="_blank" rel="noopener noreferrer">
+                                <span class="veille-link-title">{link.title.clone()}</span>
+                                <span class="veille-link-note">{link.note.clone()}</span>
+                            </a>
+                        </li>
+                    }
+                />
+            </ul>
+        </article>
+    }
+}
+
 fn main() {
     console_error_panic_hook::set_once();
     leptos::mount::mount_to_body(App);
@@ -1120,6 +1236,10 @@ fn App() -> impl IntoView {
                                     </aside>
                                 </div>
                             </section>
+                        }.into_any()
+                    } else if active_section.get() == "weekly" {
+                        view! {
+                            <WeeklySection/>
                         }.into_any()
                     } else {
                         view! {
@@ -2344,5 +2464,36 @@ mod economic_dashboard_tests {
         ];
         let adjacent_chart = render_economic_chart(&adjacent, 3, "line", pmi);
         assert!(adjacent_chart.contains(" L "));
+    }
+}
+
+/// Garde-fous de l'onglet préparation hebdomadaire (veille).
+#[cfg(test)]
+mod veille_tests {
+    use super::*;
+
+    #[test]
+    fn veille_links_json_parses_into_groups() {
+        let text = include_str!("../public/veille/links.json");
+        let resources = serde_json::from_str::<VeilleResources>(text)
+            .expect("links.json doit être { \"groups\": [...] }");
+        let groups = resources.groups;
+        assert!(groups.len() >= 4, "au moins les 4 blocs du rituel");
+        for group in &groups {
+            assert!(!group.links.is_empty(), "groupe {} sans lien", group.id);
+            for link in &group.links {
+                assert!(
+                    link.url.starts_with("https://"),
+                    "lien non https : {}",
+                    link.url
+                );
+                assert!(!link.title.is_empty());
+            }
+        }
+        let ids: Vec<&str> = groups.iter().map(|group| group.id.as_str()).collect();
+        assert!(ids.contains(&"morning"));
+        assert!(ids.contains(&"cot-friday"));
+        assert!(ids.contains(&"weekahead"));
+        assert!(ids.contains(&"banks"));
     }
 }

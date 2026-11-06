@@ -1,0 +1,156 @@
+{
+  "groups": [
+    {
+      "id": "morning",
+      "title": "Brief du matin",
+      "timing": "tous les jours · ~7 h",
+      "description": "D'abord le sentiment de risque (risk-on / risk-off / neutre), ensuite les lectures d'ouverture, enfin le calendrier du jour.",
+      "links": [
+        {
+          "title": "Trading Economics — Calendrier",
+          "url": "https://tradingeconomics.com/calendar",
+          "note": "majeures = taux, inflation, emploi, PMI"
+        },
+        {
+          "title": "Newsquawk — EU Market Open",
+          "url": "https://www.newsquawk.com/daily/eu-market-open",
+          "note": "wrap avant l'ouverture Europe"
+        },
+        {
+          "title": "Newsquawk — US Market Open",
+          "url": "https://www.newsquawk.com/daily/us-market-open",
+          "note": "wrap avant l'ouverture US"
+        },
+        {
+          "title": "ING Think — Daily FX",
+          "url": "https://think.ing.com/market/fx/",
+          "note": "FX Daily du matin — première lecture du cours"
+        },
+        {
+          "title": "Monex — Market Updates",
+          "url": "https://monexglobal.com/insights",
+          "note": "update Europe/Asie puis Amérique du Nord"
+        },
+        {
+          "title": "FinancialJuice",
+          "url": "https://www.financialjuice.com/",
+          "note": "fil des paroles de banquiers centraux"
+        },
+        {
+          "title": "Bloomberg — Economics",
+          "url": "https://www.bloomberg.com/economics",
+          "note": "abonnement requis — redirection simple"
+        }
+      ]
+    },
+    {
+      "id": "cot-friday",
+      "title": "COT — relevé hebdomadaire",
+      "timing": "vendredi · après la sortie",
+      "description": "Publication le vendredi, fenêtre mercredi → mardi. Zones <20 / >80 : extrêmes, effet « ressort ».",
+      "links": [
+        {
+          "title": "CFTC — Commitments of Traders",
+          "url": "https://www.cftc.gov/MarketReports/CommitmentsofTraders/index.htm",
+          "note": "source officielle du relevé"
+        },
+        {
+          "title": "FinancialJuice",
+          "url": "https://www.financialjuice.com/",
+          "note": "lecture alternative du relevé"
+        }
+      ]
+    },
+    {
+      "id": "weekahead",
+      "title": "Week ahead & données",
+      "timing": "samedi — dimanche",
+      "description": "Le cœur de la préparation : previews institutionnels côtés contre le calendrier, puis synthèse par devise.",
+      "links": [
+        {
+          "title": "Newsquawk — Week in Focus",
+          "url": "https://www.newsquawk.com/daily/week-in-focus",
+          "note": "sort le vendredi — « la première chose à lire »"
+        },
+        {
+          "title": "Monex — Week Ahead",
+          "url": "https://monexglobal.com/insights",
+          "note": "utiliser le filtre « Week Ahead »"
+        },
+        {
+          "title": "Scotiabank GBM — Market Insights",
+          "url": "https://www.gbm.scotiabank.com/en/market-insights/market-insights-articles.html",
+          "note": "focus CAD notamment"
+        },
+        {
+          "title": "BNZ — Markets",
+          "url": "https://www.bnz.co.nz/",
+          "note": "lecture quotidienne NZD/AUD"
+        },
+        {
+          "title": "ING Think — Latest",
+          "url": "https://think.ing.com/latest/",
+          "note": "week ahead Asia/Europe, Rates Spark"
+        },
+        {
+          "title": "CME — FedWatch Tool",
+          "url": "https://www.cmegroup.com/markets/interest-rates/cme-fedwatch-tool.html",
+          "note": "pricing des prochaines réunions Fed"
+        },
+        {
+          "title": "Atlanta Fed — GDPNow",
+          "url": "https://www.atlantafed.org/cqer/research/gdpnow",
+          "note": "now-cast du PIB US"
+        }
+      ]
+    },
+    {
+      "id": "banks",
+      "title": "Banques centrales — sites officiels",
+      "timing": "à la demande",
+      "description": "Statements, minutes, discours, calendriers : ce que dit la politique monétaire avant toute interprétation.",
+      "links": [
+        {
+          "title": "Federal Reserve",
+          "url": "https://www.federalreserve.gov/",
+          "note": "statement, SEP / dot plot, minutes"
+        },
+        {
+          "title": "BCE",
+          "url": "https://www.ecb.europa.eu/",
+          "note": "décisions, projections"
+        },
+        {
+          "title": "Bank of England",
+          "url": "https://www.bankofengland.co.uk/",
+          "note": "vote MPC + minutes"
+        },
+        {
+          "title": "Bank of Japan",
+          "url": "https://www.boj.or.jp/en/",
+          "note": "Summary of Opinions"
+        },
+        {
+          "title": "SNB",
+          "url": "https://www.snb.ch/",
+          "note": "réserves de devises — option d'arme douce"
+        },
+        {
+          "title": "RBA",
+          "url": "https://www.rba.gov.au/",
+          "note": "minutes ~3 semaines après"
+        },
+        {
+          "title": "RBNZ",
+          "url": "https://www.rbnz.govt.nz/",
+          "note": "données trimestrielles"
+        },
+        {
+          "title": "Bank of Canada",
+          "url": "https://www.bankofcanada.ca/",
+          "note": "CPI-trim / median / common"
+        }
+      ]
+    }
+  ]
+}

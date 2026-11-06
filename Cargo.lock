@@ -1620,6 +1620,7 @@ dependencies = [
  "macro-journal-shared",
  "pulldown-cmark",
  "serde",
+ "serde_json",
 ]
 
 [[package]]

@@ -759,3 +759,21 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .currency-notes-heading .search-box { width: 100%; }
   .unassigned-large-mark { width: 51px; height: 51px; flex-basis: 51px; }
 }
+
+/* ===== Préparation hebdomadaire · veille ===== */
+.veille-page { max-width: 1120px; margin: 40px auto 60px; padding: 0 34px; display: flex; flex-direction: column; gap: 22px; }
+.veille-intro h1 { margin: 8px 0 10px; font-size: 30px; line-height: 1.15; }
+.veille-intro p { margin: 0; max-width: 660px; color: var(--muted); font-size: 14px; line-height: 1.55; }
+.veille-status { color: var(--subtle); font-size: 13px; }
+.veille-error { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--danger); padding: 14px 16px; font-size: 13px; }
+.veille-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 16px; align-items: stretch; }
+.veille-card { display: flex; flex-direction: column; gap: 12px; padding: 20px; border: 1px solid var(--line-soft); border-radius: 16px; background: var(--panel); box-shadow: 0 18px 40px rgba(0, 0, 0, .18); }
+.veille-card-head { display: flex; flex-direction: column; gap: 6px; }
+.veille-timing { font-size: 10px; letter-spacing: .16em; text-transform: uppercase; color: var(--subtle); }
+.veille-card h2 { margin: 0; font-size: 17px; }
+.veille-card-head p { margin: 0; color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+.veille-links { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 7px; }
+.veille-links a { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; padding: 9px 13px; border: 1px solid var(--line-soft); border-radius: 11px; background: var(--panel-soft); transition: border-color .15s ease, background .15s ease; }
+.veille-links a:hover { border-color: var(--accent); background: var(--panel-raised); }
+.veille-link-title { font-size: 13.5px; font-weight: 600; color: var(--ink); }
+.veille-link-note { font-size: 11.5px; color: var(--subtle); text-align: right; }

@@ -879,14 +879,7 @@ fn App() -> impl IntoView {
     view! {
         <div class="app-shell" class:sidebar_hidden=move || !sidebar_visible.get()>
             <aside class="sidebar">
-                <a class="brand-lockup" href="#" on:click=move |_| {
-                    set_active_section.set("journal".to_string());
-                    set_editor_open.set(false);
-                    set_selected_currency.set(None);
-                    set_search.set(String::new());
-                    set_entries.set(Vec::new());
-                    load_entries("UNASSIGNED".to_string());
-                }>
+                <a class="brand-lockup" href="#" on:click=open_unassigned>
                     <div class="brand-mark">"M"</div>
                     <div class="brand-copy">
                         <strong>"MACRO JOURNAL"</strong>

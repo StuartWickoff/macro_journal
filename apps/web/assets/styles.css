@@ -691,6 +691,48 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .economic-form-help, .economic-form-status { margin: 9px 0 0; color: var(--subtle); font-size: 8px; }
 .economic-form-status:empty { display: none; }
 .economic-form-status { color: var(--muted); }
+.economic-edit-panel { margin-top: 4px; border-top: 1px solid var(--line-soft); }
+.economic-edit-panel summary { padding: 13px 0 2px; color: var(--muted); cursor: pointer; font-size: 9px; list-style: none; }
+.economic-edit-panel summary::-webkit-details-marker { display: none; }
+.economic-edit-panel summary > span { margin-right: 5px; color: var(--accent); }
+.economic-edit-panel[open] summary { margin-bottom: 11px; }
+.economic-edit-list { display: grid; gap: 7px; max-height: 420px; overflow: auto; padding: 2px; }
+.economic-edit-row {
+  min-height: 44px;
+  display: grid;
+  grid-template-columns: minmax(74px, auto) minmax(110px, 1fr) auto;
+  gap: 11px;
+  align-items: center;
+  padding: 8px 11px;
+  border: 1px solid var(--line-soft);
+  border-radius: 7px;
+  background: var(--panel);
+}
+.economic-edit-row form {
+  display: grid;
+  grid-template-columns: minmax(74px, auto) minmax(150px, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+.economic-edit-row-editing { padding: 10px 11px; }
+.economic-edit-date { color: var(--muted); font: 9px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: .04em; }
+.economic-edit-row-editing .economic-edit-date { padding-bottom: 11px; }
+.economic-edit-value { color: var(--ink); font-size: 11px; }
+.economic-edit-value small { margin-left: 6px; color: var(--subtle); font-size: 8px; }
+.economic-edit-row-editing label { min-width: 0; display: flex; flex-direction: column; gap: 4px; color: var(--subtle); font: 7px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.economic-edit-row-editing input { width: 100%; min-height: 31px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 5px; background: var(--page); color: var(--accent-bright); font: 10px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.economic-edit-actions { display: inline-flex; align-items: center; gap: 7px; justify-self: end; }
+.economic-edit-delete {
+  padding: 5px 8px;
+  border: 1px solid rgba(229, 154, 147, .3);
+  border-radius: 5px;
+  background: rgba(229, 154, 147, .1);
+  color: var(--danger);
+  font-size: 8px;
+  white-space: nowrap;
+}
+.economic-edit-delete:hover { border-color: var(--danger); background: rgba(229, 154, 147, .18); }
+.economic-edit-status { grid-column: 1 / -1; color: var(--muted); font-size: 8px; }
 .currency-notes-heading { margin-bottom: 14px; }
 .currency-notes-heading h2 { font-size: 24px; }
 .currency-notes-heading .search-box { width: min(270px, 42%); }

@@ -2479,6 +2479,9 @@ fn EconomicDashboard(currency_code: &'static str) -> impl IntoView {
                                     .collect::<Vec<_>>();
                                 series_rows.sort_by(|left, right| left.date.cmp(&right.date));
                                 let latest = series_rows.last().cloned();
+                                // La fermeture du graphique s'approprie series_rows :
+                                // la table d'édition a son propre Conteneur.
+                                let edit_rows = series_rows.clone();
                                 view! {
                                     <section class="economic-detail">
                                         <button
@@ -2636,6 +2639,174 @@ fn EconomicDashboard(currency_code: &'static str) -> impl IntoView {
                                                 </p>
                                                 <p class="economic-form-status" role="status">{move || save_status.get()}</p>
                                             </form>
+                                        </details>
+                                        <details class="economic-edit-panel">
+                                            <summary><span>"✎"</span> "Corriger ou retirer une coordonnée"</summary>
+                                            <div class="economic-edit-list">
+                                                {edit_rows.iter().rev().map(|row| {
+                                                    let row_owned = row.clone();
+                                                    let capture_date = row_owned.date.clone();
+                                                    let capture_series = row_owned.series_id.clone();
+                                                    let edit_currency = currency_code;
+                                                    let display_date = economic_period_label(indicator, &row_owned.date);
+                                                    let draft_value = row_owned.value.to_string();
+                                                    let draft_secondary = row_owned
+                                                        .value_secondary
+                                                        .map(|value| value.to_string())
+                                                        .unwrap_or_default();
+                                                    let (editing, set_editing) = signal(false);
+                                                    let (input_value, set_input_value) = signal(draft_value);
+                                                    let (input_secondary, set_input_secondary) = signal(draft_secondary);
+                                                    let (row_status, set_row_status) = signal(String::new());
+
+                                                    let save_date = capture_date.clone();
+                                                    let save_series = capture_series.clone();
+                                                    let save_row = move |event: leptos::ev::SubmitEvent| {
+                                                        event.prevent_default();
+                                                        let Ok(value) = input_value.get().trim().replace(',', ".").parse::<f64>() else {
+                                                            set_row_status.set("Valeur numérique invalide.".to_string());
+                                                            return;
+                                                        };
+                                                        let secondary = if indicator.secondary_label.is_some() {
+                                                            match input_secondary.get().trim().parse::<f64>() {
+                                                                Ok(number) => Some(number),
+                                                                Err(_) => {
+                                                                    set_row_status.set("Saisissez également la seconde valeur.".to_string());
+                                                                    return;
+                                                                }
+                                                            }
+                                                        } else {
+                                                            None
+                                                        };
+                                                        let draft = EconomicObservationDraft {
+                                                            date: save_date.clone(),
+                                                            value,
+                                                            value_secondary: secondary,
+                                                        };
+                                                        set_row_status.set("Correction…".to_string());
+                                                        let currency = edit_currency;
+                                                        let series = save_series.clone();
+                                                        spawn_local(async move {
+                                                            match update_economic_observation(currency, &series, draft).await {
+                                                                Ok(_) => {
+                                                                    set_observations.set(Some(fetch_economic_observations(currency).await));
+                                                                }
+                                                                Err(error) => {
+                                                                    set_row_status.set(format!("Échec de la correction : {error}"));
+                                                                }
+                                                            }
+                                                        });
+                                                    };
+                                                    let remove_row = move |_: leptos::ev::MouseEvent| {
+                                                        let confirmed = web_sys::window()
+                                                            .and_then(|window| {
+                                                                window
+                                                                    .confirm_with_message(
+                                                                        "Retirer définitivement cette coordonnée de l'historique ?",
+                                                                    )
+                                                                    .ok()
+                                                            })
+                                                            .unwrap_or(false);
+                                                        if !confirmed {
+                                                            return;
+                                                        }
+                                                        let currency = edit_currency;
+                                                        let series = capture_series.clone();
+                                                        let date = capture_date.clone();
+                                                        spawn_local(async move {
+                                                            match remove_economic_observation(currency, &series, &date).await {
+                                                                Ok(()) => {
+                                                                    set_observations.set(Some(fetch_economic_observations(currency).await));
+                                                                }
+                                                                Err(error) => {
+                                                                    set_row_status.set(format!("Échec du retrait : {error}"));
+                                                                }
+                                                            }
+                                                        });
+                                                    };
+
+                                                    {move || if editing.get() {
+                                                        let save_handler = save_row.clone();
+                                                        view! {
+                                                            <form class="economic-edit-row economic-edit-row-editing" on:submit=move |event| save_handler(event)>
+                                                                <div class="economic-edit-read">
+                                                                    <span class="economic-edit-date">{display_date.clone()}</span>
+                                                                    <label>
+                                                                        <span>{indicator.primary_label}</span>
+                                                                        <input
+                                                                            type="number"
+                                                                            step="any"
+                                                                            required
+                                                                            prop:value=move || input_value.get()
+                                                                            on:input=move |event| set_input_value.set(event_target_value(&event))
+                                                                        />
+                                                                    </label>
+                                                                    {indicator.secondary_label.map(|label| view! {
+                                                                        <label>
+                                                                            <span>{label}</span>
+                                                                            <input
+                                                                                type="number"
+                                                                                step="any"
+                                                                                required
+                                                                                prop:value=move || input_secondary.get()
+                                                                                on:input=move |event| set_input_secondary.set(event_target_value(&event))
+                                                                            />
+                                                                        </label>
+                                                                    })}
+                                                                </div>
+                                                                <div class="economic-edit-actions">
+                                                                    <button class="button button-primary" type="submit">"✓ Corriger"</button>
+                                                                    <button
+                                                                        class="button button-quiet"
+                                                                        type="button"
+                                                                        on:click=move |_| set_editing.set(false)
+                                                                    >"Annuler"</button>
+                                                                </div>
+                                                                {move || {
+                                                                    let status = row_status.get();
+                                                                    (!status.is_empty()).then(|| status)
+                                                                        .map(|message| view! { <p class="economic-edit-status" role="status">{message}</p> }.into_any())
+                                                                        .unwrap_or_else(|| view! { <span></span> }.into_any())
+                                                                }}
+                                                            </form>
+                                                        }.into_any()
+                                                    } else {
+                                                        let remove_handler = remove_row.clone();
+                                                        view! {
+                                                            <div class="economic-edit-row">
+                                                                <span class="economic-edit-date">{display_date.clone()}</span>
+                                                                <span class="economic-edit-value">{format_economic_value(row_owned.value, indicator)}</span>
+                                                                {indicator.secondary_label.map(|label| view! {
+                                                                    <span class="economic-edit-value">
+                                                                        {row_owned.value_secondary
+                                                                            .map(|value| format_economic_value(value, indicator))
+                                                                            .unwrap_or_else(|| "—".to_string())}
+                                                                        <small>{label}</small>
+                                                                    </span>
+                                                                })}
+                                                                <div class="economic-edit-actions">
+                                                                    <button class="economic-control-button" on:click=move |_| set_editing.set(true)>
+                                                                        "✎ Modifier"
+                                                                    </button>
+                                                                    <button class="economic-edit-delete" on:click=move |event| remove_handler(event)>
+                                                                        "✕ Retirer"
+                                                                    </button>
+                                                                </div>
+                                                                {move || {
+                                                                    let status = row_status.get();
+                                                                    (!status.is_empty()).then(|| status)
+                                                                        .map(|message| view! { <p class="economic-edit-status" role="status">{message}</p> }.into_any())
+                                                                        .unwrap_or_else(|| view! { <span></span> }.into_any())
+                                                                }}
+                                                            </div>
+                                                        }.into_any()
+                                                    }}
+                                                }).collect_view()}
+                                            </div>
+                                            <p class="economic-form-help">
+                                                "Chaque correction remplace uniquement la coordonnée visée dans le CSV local ; "
+                                                "« retirer » supprime la ligne. L'historique complet reste sous verrou."
+                                            </p>
                                         </details>
                                     </section>
                                 }.into_any()
@@ -3477,6 +3648,54 @@ async fn add_economic_observation(
         .json::<EconomicObservation>()
         .await
         .map_err(|error| error.to_string())
+}
+
+async fn update_economic_observation(
+    currency_code: &str,
+    series_id: &str,
+    draft: EconomicObservationDraft,
+) -> Result<EconomicObservation, String> {
+    let response = Request::put(&format!(
+        "{API_BASE}/api/economic/{currency_code}/observations/{series_id}"
+    ))
+    .json(&draft)
+    .map_err(|error| error.to_string())?
+    .send()
+    .await
+    .map_err(|error| error.to_string())?;
+
+    if !response.ok() {
+        let status = response.status();
+        return Err(response
+            .json::<ApiErrorResponse>()
+            .await
+            .map(|payload| payload.error)
+            .unwrap_or_else(|error| format!("API returned HTTP {status}: {error}")));
+    }
+
+    response
+        .json::<EconomicObservation>()
+        .await
+        .map_err(|error| error.to_string())
+}
+
+/// Retire une coordonnée (série + date) de l'historique d'une devise.
+async fn remove_economic_observation(
+    currency_code: &str,
+    series_id: &str,
+    date: &str,
+) -> Result<(), String> {
+    let response = Request::delete(&format!(
+        "{API_BASE}/api/economic/{currency_code}/observations/{series_id}/{date}"
+    ))
+    .send()
+    .await
+    .map_err(|error| error.to_string())?;
+
+    match response.ok() {
+        true => Ok(()),
+        false => Err(format!("API returned HTTP {}", response.status())),
+    }
 }
 
 async fn create_entry(currency_code: &str, draft: EntryDraft) -> Result<Entry, String> {

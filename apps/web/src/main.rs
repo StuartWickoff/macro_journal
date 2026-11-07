@@ -808,7 +808,7 @@ fn build_fiche_content(code: &str, checked: &HashSet<String>, conclusion: &str) 
 /// Le bilan hebdomadaire : quatre questions du rituel, dans l'ordre du
 /// cours. Rien de coché de façon machinale — l'utilisateur écrit.
 const BILAN_QUESTIONS: [(&str, &str); 4] = [
-    ("attendu", "Ce que j'attendais"),
+    ("attendu", "Ce que vos thèses attendaient"),
     ("surprise", "La surprise de la semaine"),
     ("corriger", "Ce que je corrige dans ma méthode"),
     ("lecon", "La leçon de la semaine"),
@@ -906,8 +906,8 @@ fn ReviewsSection() -> impl IntoView {
         <section class="bilan-page">
             <div class="bilan-intro">
                 <div class="eyebrow"><span class="eyebrow-dot"></span> "BILANS · RITUEL DE FIN DE SEMAINE"</div>
-                <h1>"Ce que j'ai pensé contre ce qui s'est passé."</h1>
-                <p>"Le bilan n'est pas un livre de comptes : c'est là que la méthode progresse. Écrivez ce que vos thèses attendaient, ce qui les a contrariées, ce que vous corrigez, ce qui reste à apprendre — la note part dans le dossier de votre choix."</p>
+                <h1>"Comparez vos anticipations aux résultats observés."</h1>
+                <p>"Le bilan de fin de semaine : ce que vos thèses attendaient, ce qui les a contrariées, ce que vous corrigez, ce qu'il reste à apprendre. La note est enregistrée dans le dossier de votre choix."</p>
             </div>
 
             <div class="bilan-form">
@@ -968,7 +968,7 @@ fn ReviewsSection() -> impl IntoView {
                                 <span>"BLOC 2023-11 → 2024-12"</span>
                                 <span>"BLOC 2025-01 → 2026-10"</span>
                                 <span>"VERDICT"</span>
-                                <span>"PREUVE"</span>
+                                <span class="eyebrow">"PREUVE CITÉE"</span>
                             </div>
                             {sort_verdicts(list).into_iter().map(|verdict| {
                                 view! {
@@ -1057,15 +1057,15 @@ fn WeeklySection(
         <section class="veille-page">
             <div class="veille-intro">
                 <div class="eyebrow"><span class="eyebrow-dot"></span> "PRÉPARATION HEBDOMADAIRE · VEILLE"</div>
-                <h1>"La semaine se prépare la veille."</h1>
+                <h1>"Préparez la semaine avec les données publiées."</h1>
                 <p>"Vendredi : relevé COT. Samedi — dimanche : un résumé par devise importante, puis une attente à court / moyen / long terme. Chaque matin vers 7 h : sentiment de risque, puis lectures. Tout est à un clic ci-dessous."</p>
             </div>
 
             <div class="pack-strip">
                 <div class="pack-strip-copy">
                     <div class="eyebrow">"PACKS DE CONTEXTE"</div>
-                    <h2>"Un texte prêt à coller dans votre chat IA."</h2>
-                    <p>"La méthode du cours plus vos dernières données réelles (COT, taux, inflation, chômage, dernière note du journal). L'IA reste dans votre chat : le dash fournit le contexte."</p>
+                    <h2>"Des packs de contexte prêts à l'emploi."</h2>
+                    <p>"La méthode du cours, enrichie de vos dernières données publiées (COT, taux, inflation, chômage, dernière note du journal). L'analyse générative reste dans votre chat : le tableau de bord fournit le contexte."</p>
                 </div>
                 <div class="pack-strip-actions">
                     <button class="button button-quiet" on:click=generate_morning>"Brief du matin"</button>
@@ -1086,7 +1086,7 @@ fn WeeklySection(
                 }
                 .into_any(),
                 Some(Ok(items)) if items.is_empty() => view! {
-                    <p class="veille-error">"Aucun groupe dans veille/links.json."</p>
+                    <p class="veille-error">"Aucun groupe de liens disponible — vérifiez veille/links.json."</p>
                 }
                 .into_any(),
                 Some(Ok(items)) => view! {
@@ -1197,7 +1197,7 @@ fn PairsSection() -> impl IntoView {
         <section class="force-page">
             <div class="force-intro">
                 <div class="eyebrow"><span class="eyebrow-dot"></span> "ANALYSE DES PAIRES · FONDAMENTAUX"</div>
-                <h1>"La plus forte contre la plus faible."</h1>
+                <h1>"Comparez la force relative des devises."</h1>
                 <p>"Les chiffres bruts de chaque devise, triés par taux réel — l'appréciation reste la vôtre. Cliquez une ligne : la fiche d'analyse s'ouvre. Vous cochez ce que vous avez traité, vous écrivez votre conclusion, elle part dans le dossier de la devise."</p>
             </div>
 
@@ -1295,7 +1295,7 @@ fn PairsSection() -> impl IntoView {
                                 id="fiche-conclusion"
                                 prop:value=move || fiche_conclusion.get()
                                 on:input=move |event| set_fiche_conclusion.set(event_target_value(&event))
-                                placeholder="Court / moyen / long — ou pas d'avis : ce texte reste le vôtre."
+                                placeholder="Votre scénario aux horizons court, moyen ou long terme."
                             ></textarea>
                         </label>
 
@@ -1653,9 +1653,9 @@ fn App() -> impl IntoView {
                         <button
                             type="button"
                             class="theme-toggle"
-                            aria-label="Basculer entre le thème nuit et le thème papier"
+                            aria-label="Basculer entre le thème sombre et le thème clair"
                             aria-pressed=move || light_theme.get().to_string()
-                            title=move || if light_theme.get() { "Passer au thème nuit" } else { "Passer au thème papier" }
+                            title=move || if light_theme.get() { "Passer au thème sombre" } else { "Passer au thème clair" }
                             on:click=toggle_theme
                         >
                             <span aria-hidden="true">{move || if light_theme.get() { "☾" } else { "☀" }}</span>
@@ -1733,7 +1733,7 @@ fn App() -> impl IntoView {
                                             class="document-title-input"
                                             type="text"
                                             aria-label="Titre de l’analyse"
-                                            placeholder="Donnez un titre à votre observation"
+                                            placeholder="Titre de l’observation"
                                             prop:value=move || title.get()
                                             on:input=move |event| {
                                                 set_title.set(event_target_value(&event));
@@ -1786,7 +1786,7 @@ fn App() -> impl IntoView {
                                                 }
                                             ></textarea>
                                             <div class="writing-footer">
-                                                <span>"Écrivez librement — les retours à la ligne sont conservés."</span>
+                                                <span>"Écrivez librement ; les sauts de ligne sont conservés."</span>
                                                 <span>{character_count} " caractères"</span>
                                             </div>
                                         </div>
@@ -1940,7 +1940,7 @@ fn App() -> impl IntoView {
                                             <div class="eyebrow">"FONDAMENTAUX · SOURCES PRIMAIRES"</div>
                                             <h2>"Données économiques"</h2>
                                         </div>
-                                        <span class="cot-indicator-label">"DONNÉES RÉALISÉES · SANS CONSENSUS"</span>
+                                        <span class="cot-indicator-label">"DONNÉES PUBLIÉES · SANS CONSENSUS INTÉGRÉ"</span>
                                     </div>
                                     <p class="economic-data-intro">
                                         {format!("Historique {} conservé dans un CSV local, sans actualisation externe. Ouvrez un indicateur pour choisir sa période et son affichage, puis saisir une nouvelle donnée. Les séries absentes ou partielles ne sont pas estimées.", currency.code)}
@@ -1979,7 +1979,7 @@ fn App() -> impl IntoView {
                                         fallback=move || view! {
                                             <div class="empty-journal currency-empty">
                                                 <div class="empty-journal-icon">{move || if entries.get().is_empty() { "✳" } else { "⌕" }}</div>
-                                                <h3>{move || if entries.get().is_empty() { format!("Le dossier {} est prêt.", currency.code) } else { "Aucune note ne correspond à cette recherche.".to_string() }}</h3>
+                                                <h3>{move || if entries.get().is_empty() { format!("Aucune note dans le dossier {} pour le moment.", currency.code) } else { "Aucune note ne correspond à cette recherche.".to_string() }}</h3>
                                                 <p>{move || if entries.get().is_empty() { "Consignez ici les données, décisions de banque centrale et hypothèses propres à cette devise.".to_string() } else { "Essayez un autre mot-clé ou effacez votre recherche.".to_string() }}</p>
                                                 <Show when=move || entries.get().is_empty()>
                                                     <button class="text-action" on:click=new_note>"Créer la première note" <span>"→"</span></button>
@@ -2033,14 +2033,14 @@ fn App() -> impl IntoView {
                             <section class="currency-index-page">
                                 <div class="currency-index-intro">
                                     <div class="eyebrow"><span class="eyebrow-dot"></span> "RECHERCHE FONDAMENTALE · VOS DOSSIERS"</div>
-                                    <h1>"Une devise, un espace."</h1>
-                                    <p>"Chaque économie a son propre dossier. Vos observations restent cloisonnées ; les comparaisons entre devises viendront plus tard."</p>
+                                    <h1>"Un dossier de recherche par devise."</h1>
+                                    <p>"Chaque économie dispose de son propre dossier. Les analyses restent cloisonnées par devise ; les comparaisons directes entre devises sont prévues dans une itération ultérieure."</p>
                                 </div>
 
                                 <div class="currency-group-heading">
                                     <div>
                                         <div class="eyebrow">"LES 8 DEVISES MAJEURES"</div>
-                                        <h2>"Choisissez votre dossier"</h2>
+                                        <h2>"Sélectionnez un dossier de recherche"</h2>
                                     </div>
                                     <span class="folder-count">"08 DOSSIERS"</span>
                                 </div>
@@ -2076,7 +2076,7 @@ fn App() -> impl IntoView {
                                         <div class="eyebrow">"FACTEUR EXTERNE"</div>
                                         <h2>"À surveiller"</h2>
                                     </div>
-                                    <p>"La Chine, notamment pour l’AUD et le NZD."</p>
+                                    <p>"La Chine, facteur externe notable pour l'AUD et le NZD."</p>
                                 </div>
                                 <For
                                     each=move || {
@@ -2105,7 +2105,7 @@ fn App() -> impl IntoView {
 
                                 <button class="unassigned-link" on:click=open_unassigned>
                                     <span class="unassigned-mark">"↗"</span>
-                                    <span><strong>"Notes à classer"</strong><small>"Toutes vos recherches, toutes devises : filtrez par devise, cherchez à l'intérieur."</small></span>
+                                    <span><strong>"Notes à classer"</strong><small>"Toutes les notes, toutes devises : filtrez puis recherchez."</small></span>
                                     <span class="currency-card-arrow">"→"</span>
                                 </button>
                             </section>
@@ -2116,8 +2116,8 @@ fn App() -> impl IntoView {
                                 <div class="welcome-banner">
                                     <div class="welcome-copy">
                                         <div class="eyebrow"><span class="eyebrow-dot"></span> "HUB DE RECHERCHE · TOUTES DEVISES"</div>
-                                        <h1>"Toutes vos recherches."<br/><span>"Cherchez à travers chaque devise."</span></h1>
-                                        <p>"Chaque analyse vit dans son dossier de devise : elles se retrouvent toutes ici, notes à classer comprises. Sélectionnez une ou plusieurs devises, puis cherchez à l'intérieur."</p>
+                                        <h1>"Toutes vos notes, tous les dossiers."<br/><span>"Filtrez et recherchez dans l'ensemble des devises."</span></h1>
+                                        <p>"Les analyses de chaque dossier de devise se retrouvent ici, notes à classer comprises. Sélectionnez une ou plusieurs devises, puis effectuez votre recherche."</p>
                                     </div>
                                     <div class="welcome-art" aria-hidden="true">
                                         <div class="art-orbit orbit-one"></div>
@@ -2133,7 +2133,7 @@ fn App() -> impl IntoView {
                                     <article class="stat-card">
                                         <div class="stat-label"><span class="stat-icon">"▤"</span> "TOUTES DEVISES"</div>
                                         <div class="stat-value">{move || entries.get().len()}</div>
-                                        <div class="stat-detail">"notes, dossiers et à classer confondus"</div>
+                                        <div class="stat-detail">"toutes devises et notes à classer confondues"</div>
                                     </article>
                                     <article class="stat-card">
                                         <div class="stat-label"><span class="stat-icon stat-icon-sand">"◷"</span> "DERNIÈRE ACTIVITÉ"</div>
@@ -2142,7 +2142,7 @@ fn App() -> impl IntoView {
                                                 .map(|entry| format_date(&entry.updated_at))
                                                 .unwrap_or_else(|| "—".to_string())
                                         }}</div>
-                                        <div class="stat-detail">{move || if entries.get().is_empty() { "Votre première note vous attend" } else { "Mise à jour la plus récente" }}</div>
+                                        <div class="stat-detail">{move || if entries.get().is_empty() { "Aucune note enregistrée pour le moment" } else { "Dernière mise à jour enregistrée" }}</div>
                                     </article>
                                     <article class="stat-card stat-card-local">
                                         <div class="stat-label"><span class="stat-icon stat-icon-green">"⌂"</span> "VOTRE ESPACE"</div>
@@ -2216,7 +2216,7 @@ fn App() -> impl IntoView {
                                             fallback=move || view! {
                                                 <div class="empty-journal">
                                                     <div class="empty-journal-icon">{move || if entries.get().is_empty() { "✳" } else { "⌕" }}</div>
-                                                    <h3>{move || if entries.get().is_empty() { "Aucune note en base." } else { "Aucune note pour cette sélection." }}</h3>
+                                                    <h3>{move || if entries.get().is_empty() { "Aucune note enregistrée pour le moment." } else { "Aucune note pour cette sélection." }}</h3>
                                                     <p>{move || if entries.get().is_empty() { "Les notes créées à partir de maintenant seront enregistrées dans le dossier de la devise concernée.".to_string() } else { "Essayez un autre mot-clé, ou ajustez le filtre de devises.".to_string() }}</p>
                                                 </div>
                                             }
@@ -2280,7 +2280,7 @@ fn App() -> impl IntoView {
                                                 <span class="method-icon">"✳"</span>
                                                 <span class="eyebrow">"VOTRE CADRE D’ANALYSE"</span>
                                             </div>
-                                            <h2>"Une conviction se construit."</h2>
+                                            <h2>"Ce qui fonde une conviction."</h2>
                                             <p>"Pas de signal magique. Une lecture solide relie plusieurs angles et garde la place au doute."</p>
                                             <div class="method-steps">
                                                 <div class="method-step">
@@ -2496,7 +2496,7 @@ fn EconomicDashboard(currency_code: &'static str) -> impl IntoView {
                                         </button>
                                         <div class="economic-detail-heading">
                                             <div>
-                                                <div class="eyebrow">{format!("{} · DONNÉES RÉALISÉES", currency_code)}</div>
+                                                <div class="eyebrow">{format!("{} · DONNÉES PUBLIÉES", currency_code)}</div>
                                                 <h3>{indicator.title}</h3>
                                                 <p>{indicator.note}</p>
                                             </div>
@@ -4165,7 +4165,7 @@ mod bilans_tests {
         ];
         let content = build_bilan_content("USD", &answers);
         assert!(content.contains("# Bilan semaine USD"));
-        assert!(content.contains("## Ce que j'attendais"));
+        assert!(content.contains("## Ce que vos thèses attendaient"));
         assert!(content.contains("Le CPI a surpris au-dessus."));
         assert!(content.contains("## Ce que je corrige dans ma méthode"));
         assert!(content.contains("« Rien d'écrit. »"));

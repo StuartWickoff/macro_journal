@@ -521,6 +521,49 @@ fn copy_text_to_clipboard() -> bool {
     document.exec_command("copy").unwrap_or(false)
 }
 
+/// Clé de stockage du thème (localStorage, persistant entre les sessions).
+const THEME_STORAGE_KEY: &str = "macro_journal::theme";
+
+/// Le visiteur a-t-il mémorisé le thème « papier » ? Nuit par défaut.
+fn stored_theme_is_light() -> bool {
+    web_sys::window()
+        .and_then(|window| window.local_storage().ok().flatten())
+        .and_then(|storage| storage.get_item(THEME_STORAGE_KEY).ok().flatten())
+        .as_deref()
+        == Some("light")
+}
+
+/// Applique le thème sur le document : attribut `data-theme` sur <html>
+/// (le bloc CSS `[data-theme="light"]` reprend les tokens) et `theme-color`
+/// de la barre du navigateur aligné.
+fn apply_theme(light: bool) {
+    let Some(window) = web_sys::window() else {
+        return;
+    };
+    let Some(document) = window.document() else {
+        return;
+    };
+    if let Some(element) = document.document_element() {
+        if light {
+            let _ = element.set_attribute("data-theme", "light");
+        } else {
+            let _ = element.remove_attribute("data-theme");
+        }
+    }
+    let color = if light { "#f3f0e8" } else { "#0a111b" };
+    if let Ok(Some(meta)) = document.query_selector("meta[name='theme-color']") {
+        let _ = meta.set_attribute("content", color);
+    }
+}
+
+/// Mémorise le choix de thème pour les prochaines visites.
+fn persist_theme(light: bool) {
+    let value = if light { "light" } else { "dark" };
+    if let Some(storage) = web_sys::window().and_then(|window| window.local_storage().ok()).flatten() {
+        let _ = storage.set_item(THEME_STORAGE_KEY, value);
+    }
+}
+
 /// Sélectionne tout le contenu de la zone pack (copie manuelle Ctrl+C).
 fn select_pack_textarea() {
     if let Some(window) = web_sys::window() {
@@ -1305,6 +1348,18 @@ fn App() -> impl IntoView {
     let (active_section, set_active_section) = signal("currencies".to_string());
     let (entries, set_entries) = signal::<Vec<Entry>>(Vec::new());
     let (active_id, set_active_id) = signal::<Option<i64>>(None);
+
+    // Thème clair/sombre : appliqué une fois au montage, bascule depuis la
+    // topbar, choix mémorisé dans localStorage.
+    let (light_theme, set_light_theme) = signal(stored_theme_is_light());
+    apply_theme(light_theme.get());
+    let toggle_theme = move |_| {
+        set_light_theme.update(|light| {
+            *light = !*light;
+            apply_theme(*light);
+            persist_theme(*light);
+        });
+    };
     let (title, set_title) = signal(String::new());
     let (content, set_content) = signal(String::new());
     let (search, set_search) = signal(String::new());
@@ -1549,6 +1604,16 @@ fn App() -> impl IntoView {
                         </div>
                     </div>
                     <div class="topbar-actions">
+                        <button
+                            type="button"
+                            class="theme-toggle"
+                            aria-label="Basculer entre le thème nuit et le thème papier"
+                            aria-pressed=move || light_theme.get().to_string()
+                            title=move || if light_theme.get() { "Passer au thème nuit" } else { "Passer au thème papier" }
+                            on:click=toggle_theme
+                        >
+                            <span aria-hidden="true">{move || if light_theme.get() { "☾" } else { "☀" }}</span>
+                        </button>
                         <span class="topbar-private"><span>"●"</span> "LOCAL & PRIVÉ"</span>
                         <div class="avatar">"MJ"</div>
                     </div>

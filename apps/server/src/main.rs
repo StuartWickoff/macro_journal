@@ -83,6 +83,19 @@ struct EconomicObservation {
     value_secondary: Option<f64>,
 }
 
+/// Une ligne du fichier de verdicts du pipeline de recherche : la
+/// fiabilité de l'historique d'une série, par bloc de dates, avec la
+/// preuve en commentaire. Lecture seule — le fichier reste la source éditable.
+#[derive(Clone, Debug, Serialize)]
+struct DataVerdict {
+    currency: String,
+    series_id: String,
+    block1: String,
+    block2: String,
+    verdict: String,
+    evidence: String,
+}
+
 #[derive(Debug, Deserialize)]
 struct EconomicObservationDraft {
     date: String,
@@ -165,6 +178,7 @@ async fn main() -> anyhow::Result<()> {
             "/api/economic/{currency_code}/observations",
             get(list_economic_observations),
         )
+        .route("/api/verdicts", get(list_verdicts))
         .route(
             "/api/economic/{currency_code}/observations/{series_id}",
             post(add_economic_observation),
@@ -225,6 +239,101 @@ async fn list_economic_observations(
 ) -> Result<Json<Vec<EconomicObservation>>, ApiFailure> {
     let path = economic_history_path(&state.economic_data_root, &currency_code)?;
     read_economic_history(&path, &currency_code).await.map(Json)
+}
+
+/// Lecture seule des verdicts de fiabilité des données : le pipeline de
+/// recherche de l'utilisateur écrit le fichier, l'API se contente de
+/// l'exposer. Les corrections restent dans le fichier, jamais ici.
+async fn list_verdicts(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<DataVerdict>>, ApiFailure> {
+    let path = verdicts_path(&state.economic_data_root);
+    read_verdicts(&path).await.map(Json)
+}
+
+fn verdicts_path(root: &std::path::Path) -> PathBuf {
+    root.join("economic_data")
+        .join("recherches_gemini")
+        .join("verdicts.csv")
+}
+
+async fn read_verdicts(path: &std::path::Path) -> Result<Vec<DataVerdict>, ApiFailure> {
+    let contents = tokio::fs::read_to_string(path).await.map_err(|error| {
+        error!(?error, path = %path.display(), "Could not read verdicts file");
+        ApiFailure::internal("Verdicts file could not be read.")
+    })?;
+
+    let mut lines = contents.lines();
+    match lines.next() {
+        Some(header) => {
+            let columns = split_verdicts_row(header);
+            if columns.len() != 6
+                || columns.first().map(String::as_str) != Some("currency")
+                || columns.get(1).map(String::as_str) != Some("series_id")
+            {
+                error!(path = %path.display(), "Verdicts file has an invalid CSV header");
+                return Err(ApiFailure::internal(
+                    "Verdicts file has an invalid CSV header.",
+                ));
+            }
+        }
+        None => {
+            error!(path = %path.display(), "Verdicts file is empty");
+            return Err(ApiFailure::internal("Verdicts file is empty."));
+        }
+    }
+
+    let mut verdicts = Vec::new();
+    for (index, line) in lines.enumerate() {
+        let columns = split_verdicts_row(line);
+        if columns.len() != 6 {
+            error!(line = index + 2, "Verdicts file has an invalid CSV row");
+            return Err(ApiFailure::internal(
+                "Verdicts file contains an invalid CSV row.",
+            ));
+        }
+        verdicts.push(DataVerdict {
+            currency: columns[0].clone(),
+            series_id: columns[1].clone(),
+            block1: columns[2].clone(),
+            block2: columns[3].clone(),
+            verdict: columns[4].clone(),
+            evidence: columns[5].clone(),
+        });
+    }
+    Ok(verdicts)
+}
+
+/// Décodage CSV d'une ligne de verdicts : les preuves sont entre guillemets
+/// et contiennent des virgules, un split naïf les casserait. Un guillemet
+/// doublé à l'intérieur d'un champ cité vaut un guillemet littéral.
+fn split_verdicts_row(line: &str) -> Vec<String> {
+    let mut columns = Vec::new();
+    let mut current = String::new();
+    let mut in_quotes = false;
+    let mut chars = line.chars().peekable();
+    while let Some(char) = chars.next() {
+        if in_quotes {
+            if char == '"' {
+                if chars.peek() == Some(&'"') {
+                    current.push('"');
+                    chars.next();
+                } else {
+                    in_quotes = false;
+                }
+            } else {
+                current.push(char);
+            }
+        } else if char == '"' {
+            in_quotes = true;
+        } else if char == ',' {
+            columns.push(std::mem::take(&mut current));
+        } else {
+            current.push(char);
+        }
+    }
+    columns.push(current);
+    columns
 }
 
 async fn add_economic_observation(
@@ -881,6 +990,49 @@ mod tests {
     use axum::http::Request;
     use macro_journal_server::config::StorageLayout;
     use tower::ServiceExt;
+
+    #[test]
+    fn split_verdicts_row_keeps_quoted_commas() {
+        let columns = split_verdicts_row(
+            "EUR,policy_rate,OK,WRONG,WARN,\"ECB: 3.00 (file 2.75), corrigé après\"",
+        );
+        assert_eq!(columns.len(), 6);
+        assert_eq!(columns[0], "EUR");
+        assert_eq!(columns[5], "ECB: 3.00 (file 2.75), corrigé après");
+
+        let plain = split_verdicts_row("USD,cpi_headline_yoy,OK,OK,OK,rien à signaler");
+        assert_eq!(plain.len(), 6);
+        assert_eq!(plain[4], "OK");
+    }
+
+    #[tokio::test]
+    async fn read_verdicts_parses_quoted_evidence() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("verdicts.csv");
+        std::fs::write(
+            &path,
+            "currency,series_id,block1,block2,verdict,evidence\n\
+             EUR,policy_rate,OK,WRONG,WARN,\"ECB: Jan-2025 3.00 (file 2.75), fixed later\"\n",
+        )
+        .unwrap();
+        let verdicts = read_verdicts(&path).await.unwrap();
+        assert_eq!(verdicts.len(), 1);
+        assert_eq!(verdicts[0].currency, "EUR");
+        assert_eq!(verdicts[0].series_id, "policy_rate");
+        assert_eq!(verdicts[0].block2, "WRONG");
+        assert_eq!(
+            verdicts[0].evidence,
+            "ECB: Jan-2025 3.00 (file 2.75), fixed later"
+        );
+    }
+
+    #[tokio::test]
+    async fn read_verdicts_rejects_invalid_header() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("verdicts.csv");
+        std::fs::write(&path, "colone,autre\nvaleur,valeur\n").unwrap();
+        assert!(read_verdicts(&path).await.is_err());
+    }
 
     async fn test_app(dir: &std::path::Path) -> Router {
         let layout =

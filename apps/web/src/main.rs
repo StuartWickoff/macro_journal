@@ -559,7 +559,10 @@ fn apply_theme(light: bool) {
 /// Mémorise le choix de thème pour les prochaines visites.
 fn persist_theme(light: bool) {
     let value = if light { "light" } else { "dark" };
-    if let Some(storage) = web_sys::window().and_then(|window| window.local_storage().ok()).flatten() {
+    if let Some(storage) = web_sys::window()
+        .and_then(|window| window.local_storage().ok())
+        .flatten()
+    {
         let _ = storage.set_item(THEME_STORAGE_KEY, value);
     }
 }
@@ -1420,6 +1423,49 @@ fn App() -> impl IntoView {
         set_save_status.set("NOUVEAU BROUILLON · NON ENREGISTRÉ".to_string());
     };
 
+    // Suppression définitive de la note ouverte : confirmation, DELETE
+    // serveur, puis retour à la liste et rechargement de la vue courante.
+    let remove_note = move |_| {
+        let Some(id) = active_id.get() else {
+            return;
+        };
+        let confirmed = web_sys::window()
+            .and_then(|window| {
+                window
+                    .confirm_with_message("Supprimer définitivement cette note ?")
+                    .ok()
+            })
+            .unwrap_or(false);
+        if !confirmed {
+            return;
+        }
+        let currency = selected_currency.get().unwrap_or_default();
+        let still = active_section.get().clone();
+        spawn_local(async move {
+            match delete_entry_request(id).await {
+                Ok(()) => {
+                    set_editor_open.set(false);
+                    set_active_id.set(None);
+                    set_title.set(String::new());
+                    set_content.set(String::new());
+                    set_save_status.set("NOTE SUPPRIMÉE".to_string());
+                    if currency.is_empty() {
+                        if let Ok(items) = fetch_all_entries().await {
+                            if still == "journal" {
+                                set_entries.set(items);
+                            }
+                        }
+                    } else {
+                        load_entries(currency);
+                    }
+                }
+                Err(error) => {
+                    set_save_status.set(format!("SUPPRESSION IMPOSSIBLE · {error}"));
+                }
+            }
+        });
+    };
+
     let open_currency = move |code: &'static str| {
         set_active_section.set("currencies".to_string());
         set_selected_currency.set(Some(code.to_string()));
@@ -1651,6 +1697,11 @@ fn App() -> impl IntoView {
                                             </button>
                                             <button class="button button-primary" on:click=save_note>
                                                 <span>"✓"</span> "Enregistrer"
+                                            </button>
+                                        </Show>
+                                        <Show when=move || active_id.get().is_some()>
+                                            <button class="button button-danger" on:click=remove_note>
+                                                <span aria-hidden="true">"✕"</span> "Supprimer"
                                             </button>
                                         </Show>
                                     </div>
@@ -3446,6 +3497,19 @@ async fn create_entry(currency_code: &str, draft: EntryDraft) -> Result<Entry, S
         .json::<Entry>()
         .await
         .map_err(|error| error.to_string())
+}
+
+/// Supprime définitivement une entrée (le serveur répond 204).
+async fn delete_entry_request(id: i64) -> Result<(), String> {
+    let response = Request::delete(&format!("{API_BASE}/api/entries/{id}"))
+        .send()
+        .await
+        .map_err(|error| error.to_string())?;
+
+    match response.ok() {
+        true => Ok(()),
+        false => Err(format!("API returned HTTP {}", response.status())),
+    }
 }
 
 async fn update_entry(id: i64, currency_code: &str, draft: EntryDraft) -> Result<Entry, String> {

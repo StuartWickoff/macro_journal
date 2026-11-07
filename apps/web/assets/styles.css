@@ -225,6 +225,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .button-primary:hover { border-color: var(--accent); background: var(--accent); }
 .button-quiet { border: 1px solid var(--line); background: var(--panel); color: var(--muted); }
 .button-quiet:hover, .button-quiet.button-selected { border-color: var(--faint); background: var(--panel-raised); color: var(--accent-bright); }
+.button-danger { border: 1px solid rgba(229, 154, 147, .35); background: rgba(229, 154, 147, .12); color: var(--danger); }
+.button-danger:hover { border-color: var(--danger); background: rgba(229, 154, 147, .2); }
 .welcome-art { position: absolute; top: 0; right: 2%; width: 39%; height: 100%; opacity: .8; }
 .art-orbit { position: absolute; top: 50%; left: 52%; border: 1px solid rgba(183,205,172,.17); border-radius: 50%; transform: translate(-50%,-50%) rotate(-24deg); }
 .orbit-one { width: 225px; height: 116px; }

@@ -870,7 +870,6 @@ fn App() -> impl IntoView {
             .map(|currency| currency.code)
             .unwrap_or("Dossiers de devises"),
         "weekly" => "Préparation hebdomadaire",
-        "events" => "Actualités & événements",
         "pairs" => "Analyse des paires",
         "reviews" => "Bilans",
         _ => "Journal de recherche",
@@ -908,9 +907,6 @@ fn App() -> impl IntoView {
                     </button>
                     <button class="nav-item" class:active=move || active_section.get() == "weekly" on:click=move |_| set_active_section.set("weekly".to_string())>
                         <span class="nav-icon">"▦"</span><span>"Préparation hebdomadaire"</span>
-                    </button>
-                    <button class="nav-item" class:active=move || active_section.get() == "events" on:click=move |_| set_active_section.set("events".to_string())>
-                        <span class="nav-icon">"◷"</span><span>"Actualités & événements"</span>
                     </button>
                     <button class="nav-item" class:active=move || active_section.get() == "pairs" on:click=move |_| set_active_section.set("pairs".to_string())>
                         <span class="nav-icon">"⇄"</span><span>"Analyse des paires"</span>

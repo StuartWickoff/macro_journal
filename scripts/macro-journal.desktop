@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Macro Journal
+GenericName=Journal de recherche fondamentale
+Comment=Notes de recherche, économie et COT, locales sur votre machine : démarre le serveur release puis ouvre le navigateur.
+Exec=/home/david/macro_journal/scripts/macro-journal-launch.sh
+Icon=/home/david/macro_journal/scripts/icon.svg
+Terminal=false
+Categories=Office;Science;Finance;
+StartupNotify=false

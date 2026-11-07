@@ -91,6 +91,18 @@ cargo run -p macro-journal-server --release
 
 Puis ouvrir `http://127.0.0.1:3000`. Axum sert les fichiers compilés depuis `apps/web/dist`, après les routes de l'API.
 
+## Lancement direct (*.desktop)
+
+L'entrée « Macro Journal » du menu applications lance le binaire release sans terminal :
+
+```bash
+cargo build --release -p macro-journal-server   # binaire serviteur
+cd apps/web && trunk build --release            # interface servie par ce binaire
+cp scripts/macro-journal.desktop ~/.local/share/applications/   # une fois par machine
+```
+
+`scripts/macro-journal-launch.sh` (cible de `Exec` dans `scripts/macro-journal.desktop`) vérifie ensuite : serveur déjà à jour (par `/api/health` puis `/api/verdicts`), remplacement d'un binaire ancien, démarrage du serveur en arrière-plan (journal dans `~/.local/state/macro-journal/server.log`, actualisation COT au premier lancer), et ouverture du navigateur sur `http://127.0.0.1:3000`.
+
 ## Emplacement des données
 
 Base par défaut (indépendante du répertoire courant) :

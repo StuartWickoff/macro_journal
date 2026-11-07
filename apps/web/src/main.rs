@@ -522,6 +522,200 @@ fn select_pack_textarea() {
     }
 }
 
+/// Série d'inflation principale suivie pour chaque devise : celle que la
+/// banque centrale regarde en premier pour juger sa politique.
+fn force_inflation_series(code: &str) -> &'static str {
+    match code {
+        "USD" => "pce_inflation",
+        "EUR" => "hicp_headline_yoy",
+        "CAD" => "cpi_trimmed",
+        "AUD" => "cpi_trimmed_mean",
+        _ => "cpi_headline_yoy",
+    }
+}
+
+fn force_rate_series(code: &str) -> &'static str {
+    if code == "USD" {
+        "fed_target_range"
+    } else {
+        "policy_rate"
+    }
+}
+
+/// Les deux dernières observations d'une série, triées par date.
+fn last_two_observations(
+    observations: &[EconomicObservation],
+    series_id: &str,
+) -> (Option<EconomicObservation>, Option<EconomicObservation>) {
+    let mut matched: Vec<EconomicObservation> = observations
+        .iter()
+        .filter(|observation| observation.series_id == series_id)
+        .cloned()
+        .collect();
+    matched.sort_by(|a, b| b.date.cmp(&a.date));
+    (matched.first().cloned(), matched.get(1).cloned())
+}
+
+/// Santé fondamentale d'une devise, vue pour la carte de force.
+#[derive(Clone, Debug)]
+struct CurrencyHealth {
+    code: &'static str,
+    rate: Option<f64>,
+    inflation: Option<f64>,
+    inflation_prev: Option<f64>,
+    unemployment: Option<f64>,
+    unemployment_prev: Option<f64>,
+    real_rate: Option<f64>,
+    score: u8,
+}
+
+/// Score simple et lisible (0 à 4), Inspiré de la méthode du cours :
+/// - +2 si le taux réel (taux − inflation) est ≥ +1 % : politique nettement restrictive
+/// - +1 si le taux réel est ≥ 0 % : la devise rapporte déjà face à son inflation
+/// - +1 si l'inflation décélère
+/// - +1 si le chômage baisse
+fn currency_health(code: &'static str, observations: &[EconomicObservation]) -> CurrencyHealth {
+    let (rate_observation, _) = last_two_observations(observations, force_rate_series(code));
+    let (inflation_observation, inflation_previous) =
+        last_two_observations(observations, force_inflation_series(code));
+    let (unemployment_observation, unemployment_previous) =
+        last_two_observations(observations, "unemployment_rate");
+
+    let rate = rate_observation.map(|observation| observation.value);
+    let inflation = inflation_observation.map(|observation| observation.value);
+    let inflation_prev = inflation_previous.map(|observation| observation.value);
+    let unemployment = unemployment_observation.map(|observation| observation.value);
+    let unemployment_prev = unemployment_previous.map(|observation| observation.value);
+    let real_rate = match (rate, inflation) {
+        (Some(rate), Some(inflation)) => Some(rate - inflation),
+        _ => None,
+    };
+
+    let mut score = 0;
+    if let Some(real_rate) = real_rate {
+        if real_rate >= 1.0 {
+            score += 2;
+        } else if real_rate >= 0.0 {
+            score += 1;
+        }
+    }
+    if let (Some(last), Some(previous)) = (inflation, inflation_prev) {
+        if last < previous {
+            score += 1;
+        }
+    }
+    if let (Some(last), Some(previous)) = (unemployment, unemployment_prev) {
+        if last < previous {
+            score += 1;
+        }
+    }
+
+    CurrencyHealth {
+        code,
+        rate,
+        inflation,
+        inflation_prev,
+        unemployment,
+        unemployment_prev,
+        real_rate,
+        score,
+    }
+}
+
+/// La plus forte d'abord : score décroissant, puis taux réel décroissant,
+/// puis ordre alphabétique pour rester stable.
+fn sort_healths(mut healths: Vec<CurrencyHealth>) -> Vec<CurrencyHealth> {
+    healths.sort_by(|a, b| {
+        b.score
+            .cmp(&a.score)
+            .then_with(|| {
+                b.real_rate
+                    .unwrap_or(f64::NEG_INFINITY)
+                    .partial_cmp(&a.real_rate.unwrap_or(f64::NEG_INFINITY))
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .then_with(|| a.code.cmp(b.code))
+    });
+    healths
+}
+
+fn health_label(score: u8) -> &'static str {
+    if score >= 4 {
+        "FORTE"
+    } else if score == 3 {
+        "FERME"
+    } else if score == 2 {
+        "NEUTRE"
+    } else {
+        "FRAGILE"
+    }
+}
+
+/// Paire cotée avec l'USD selon la convention du marché :
+/// (nom de la paire, devise de base). Base en premier pour EUR, GBP, AUD,
+/// NZD ; l'USD est base contre JPY, CHF, CAD, CNY.
+fn usd_pair(other: &str) -> (String, String) {
+    match other {
+        "EUR" => ("EUR/USD".to_string(), "EUR".to_string()),
+        "GBP" => ("GBP/USD".to_string(), "GBP".to_string()),
+        "AUD" => ("AUD/USD".to_string(), "AUD".to_string()),
+        "NZD" => ("NZD/USD".to_string(), "NZD".to_string()),
+        _ => (format!("USD/{}", other), "USD".to_string()),
+    }
+}
+
+/// Suggestion de la semaine : la plus forte contre la plus faible si
+/// l'écart de score est net. None quand aucune divergence ne sort.
+fn pair_suggestion(healths: &[CurrencyHealth]) -> Option<String> {
+    let sorted = sort_healths(healths.to_vec());
+    let strong = sorted.first()?;
+    let weak = sorted.last()?;
+    if strong.code == weak.code || strong.score == weak.score {
+        return None;
+    }
+    let (pair, base) = if strong.code == "USD" {
+        usd_pair(weak.code)
+    } else if weak.code == "USD" {
+        usd_pair(strong.code)
+    } else {
+        return Some(format!(
+            "{strong} porte le meilleur score contre {weak} — la croisée n'est pas cotée ici, lisez-la sur votre graphique.",
+            strong = strong.code,
+            weak = weak.code
+        ));
+    };
+    let side = if base == strong.code {
+        "l'achat de la paire penche avec la devise la plus forte"
+    } else {
+        "la vente penche avec la devise la plus forte"
+    };
+    Some(format!(
+        "{strong} ({strong_score}) contre {weak} ({weak_score}) → {pair} — {side}.",
+        strong = strong.code,
+        strong_score = health_label(strong.score),
+        weak = weak.code,
+        weak_score = health_label(weak.score),
+        pair = pair,
+        side = side,
+    ))
+}
+
+fn pct_with_delta(value: Option<f64>, previous: Option<f64>) -> String {
+    match value {
+        None => "—".to_string(),
+        Some(value) => match previous {
+            None => format!("{:.2} %", value),
+            Some(previous) => format!("{:.2} % ({:+.2})", value, value - previous),
+        },
+    }
+}
+
+fn currency_flag(code: &str) -> &'static str {
+    currency_info(code)
+        .map(|currency| currency.flag)
+        .unwrap_or("unassigned")
+}
+
 /// Onglet « Préparation hebdomadaire » : les liens du rituel de veille,
 /// regroupés par moment de la semaine selon la méthode de la formation,
 /// plus les packs de contexte prêts à coller dans un chat IA externe.
@@ -656,6 +850,98 @@ fn WeeklySection(
                     </div>
                 </div>
             </Show>
+        </section>
+    }
+}
+
+/// Onglet « Analyse des paires » — carte de force des devises : la plus
+/// forte contre la plus faible, d'après taux, taux réel, inflation,
+/// chômage (données locales). Le COT et le pricing restent en appui.
+#[component]
+fn PairsSection() -> impl IntoView {
+    let (healths, set_healths) = signal::<Option<Vec<CurrencyHealth>>>(None);
+
+    spawn_local(async move {
+        let mut result = Vec::new();
+        for currency in CURRENCIES {
+            let observations = fetch_economic_observations(currency.code)
+                .await
+                .unwrap_or_default();
+            result.push(currency_health(currency.code, &observations));
+        }
+        set_healths.set(Some(result));
+    });
+
+    view! {
+        <section class="force-page">
+            <div class="force-intro">
+                <div class="eyebrow"><span class="eyebrow-dot"></span> "ANALYSE DES PAIRES · CARTE DE FORCE"</div>
+                <h1>"La plus forte contre la plus faible."</h1>
+                <p>"Chaque devise porte un score lisible : niveau de taux, taux réel (taux − inflation), trajectoire de l'inflation et du chômage. Le classement suggère où regarder, pas où entrer."</p>
+            </div>
+
+            {move || match healths.get() {
+                None => view! {
+                    <p class="force-status">"Lecture des données économiques des 9 devises…"</p>
+                }
+                .into_any(),
+                Some(_) => {
+                    view! {
+                        <div class="force-suggestion">
+                            <span class="eyebrow">"SUGGESTION DE LA SEMAINE"</span>
+                            <p>{move || {
+                                pair_suggestion(&sort_healths(healths.get().unwrap_or_default()))
+                                    .unwrap_or_else(|| {
+                                        "Pas de divergence nette cette semaine : le clan des devises reste compact — rarissime, et tout aussi informatif.".to_string()
+                                    })
+                            }}</p>
+                            <small>"Le COT et le pricing prolongent ce classement, ils ne le remplacent pas."</small>
+                        </div>
+
+                        <div class="force-table">
+                            <div class="force-table-head">
+                                <span>"DEVISE"</span>
+                                <span>"TAUX"</span>
+                                <span>"INFLATION"</span>
+                                <span>"CHÔMAGE"</span>
+                                <span>"TAUX RÉEL"</span>
+                                <span>"TEMPÉRATURE"</span>
+                            </div>
+                            <For
+                                each=move || sort_healths(healths.get().unwrap_or_default())
+                                key=|health| health.code
+                                children=move |health| {
+                                    let badge_class = if health.score >= 4 {
+                                        "force-badge force-strong"
+                                    } else if health.score == 3 {
+                                        "force-badge force-firm"
+                                    } else if health.score == 2 {
+                                        "force-badge force-neutral"
+                                    } else {
+                                        "force-badge force-fragile"
+                                    };
+                                    view! {
+                                        <div class="force-row">
+                                            <span class="force-code">
+                                                <img src=format!("/flags/{}.png", currency_flag(health.code)) alt=health.code/>
+                                                <strong>{health.code}</strong>
+                                            </span>
+                                            <span>{pct_with_delta(health.rate, None)}</span>
+                                            <span>{pct_with_delta(health.inflation, health.inflation_prev)}</span>
+                                            <span>{pct_with_delta(health.unemployment, health.unemployment_prev)}</span>
+                                            <span>{pct_with_delta(health.real_rate, None)}</span>
+                                            <span class=badge_class>{format!("{} · {}/4", health_label(health.score), health.score)}</span>
+                                        </div>
+                                    }
+                                }
+                            />
+                        </div>
+
+                        <p class="force-note">"Inflation : série principale suivie par chaque banque centrale (PCE côté US, HICP côté euro, trimmed/trimmed-mean ailleurs). Les Δ entre parenthèses valent la variation vs la lecture précédente."</p>
+                    }
+                    .into_any()
+                }
+            }}
         </section>
     }
 }
@@ -1592,6 +1878,10 @@ fn App() -> impl IntoView {
                     } else if active_section.get() == "weekly" {
                         view! {
                             <WeeklySection cot_manifest=cot_manifest/>
+                        }.into_any()
+                    } else if active_section.get() == "pairs" {
+                        view! {
+                            <PairsSection/>
                         }.into_any()
                     } else {
                         view! {
@@ -3048,5 +3338,127 @@ mod journal_filter_tests {
             2
         );
         assert!(entries_matching_filter(&all, &selected(&[]), "inexistant").is_empty());
+    }
+}
+
+/// Garde-fous de la carte de force (analyse des paires).
+#[cfg(test)]
+mod pairs_tests {
+    use super::*;
+
+    fn observation(series_id: &str, date: &str, value: f64) -> EconomicObservation {
+        EconomicObservation {
+            series_id: series_id.to_string(),
+            date: date.to_string(),
+            value,
+            value_secondary: None,
+        }
+    }
+
+    fn health(code: &'static str, score: u8, real_rate: impl Into<Option<f64>>) -> CurrencyHealth {
+        CurrencyHealth {
+            code,
+            rate: Some(3.0),
+            inflation: Some(2.0),
+            inflation_prev: Some(2.0),
+            unemployment: Some(7.0),
+            unemployment_prev: Some(7.0),
+            real_rate: real_rate.into(),
+            score,
+        }
+    }
+
+    #[test]
+    fn last_two_observations_orders_by_date_desc() {
+        let observations = vec![
+            observation("policy_rate", "2026-07-31", 2.50),
+            observation("policy_rate", "2026-09-30", 2.25),
+            observation("policy_rate", "2026-05-31", 2.75),
+        ];
+        let (last, previous) = last_two_observations(&observations, "policy_rate");
+        assert_eq!(last.map(|observation| observation.value), Some(2.25));
+        assert_eq!(previous.map(|observation| observation.value), Some(2.50));
+    }
+
+    #[test]
+    fn currency_health_scores_restriction_and_trajectory() {
+        let observations = vec![
+            observation("policy_rate", "2026-09-30", 3.0),
+            observation("cpi_headline_yoy", "2026-09-30", 1.5),
+            observation("cpi_headline_yoy", "2026-08-31", 2.0),
+            observation("unemployment_rate", "2026-09-01", 7.0),
+            observation("unemployment_rate", "2026-08-01", 7.5),
+        ];
+        let health = currency_health("GBP", &observations);
+        assert_eq!(health.real_rate, Some(1.5));
+        assert_eq!(health.score, 4);
+        assert_eq!(health_label(health.score), "FORTE");
+    }
+
+    #[test]
+    fn currency_health_scores_neutral_and_fragile() {
+        let observations = vec![
+            observation("policy_rate", "2026-09-30", 3.0),
+            observation("cpi_headline_yoy", "2026-09-30", 4.0),
+            observation("cpi_headline_yoy", "2026-08-31", 3.5),
+            observation("unemployment_rate", "2026-09-01", 7.5),
+            observation("unemployment_rate", "2026-08-01", 7.0),
+        ];
+        let health = currency_health("GBP", &observations);
+        assert_eq!(health.real_rate, Some(-1.0));
+        assert_eq!(health.score, 0);
+        assert_eq!(health_label(health.score), "FRAGILE");
+
+        let softer = vec![
+            observation("policy_rate", "2026-09-30", 3.0),
+            observation("cpi_headline_yoy", "2026-09-30", 3.5),
+            observation("cpi_headline_yoy", "2026-08-31", 4.0),
+            observation("unemployment_rate", "2026-09-01", 7.5),
+            observation("unemployment_rate", "2026-08-01", 7.8),
+        ];
+        let health = currency_health("GBP", &softer);
+        assert_eq!(health.score, 2);
+        assert_eq!(health_label(health.score), "NEUTRE");
+    }
+
+    #[test]
+    fn usd_pair_uses_market_quotation() {
+        let (pair, base) = usd_pair("EUR");
+        assert_eq!((pair.as_str(), base.as_str()), ("EUR/USD", "EUR"));
+        let (pair, base) = usd_pair("JPY");
+        assert_eq!((pair.as_str(), base.as_str()), ("USD/JPY", "USD"));
+    }
+
+    #[test]
+    fn pair_suggestion_picks_strongest_against_weakest() {
+        let healths = vec![
+            health("EUR", 4, 1.5),
+            health("USD", 1, -0.5),
+            health("JPY", 2, 0.1),
+        ];
+        let suggestion = pair_suggestion(&healths).expect("divergence attendue");
+        assert!(suggestion.contains("EUR/USD"), "{}", suggestion);
+        assert!(suggestion.contains("EUR"), "{}", suggestion);
+
+        let aligned = vec![health("EUR", 3, 1.0), health("GBP", 3, 1.2)];
+        assert!(pair_suggestion(&aligned).is_none());
+    }
+
+    #[test]
+    fn pair_suggestion_reports_cross_without_quoting() {
+        let healths = vec![health("EUR", 4, 1.5), health("GBP", 0, -1.0)];
+        let suggestion = pair_suggestion(&healths).expect("divergence attendue");
+        assert!(suggestion.contains("croisée"), "{}", suggestion);
+    }
+
+    #[test]
+    fn sort_healths_orders_by_score_then_real_rate() {
+        let sorted = sort_healths(vec![
+            health("EUR", 2, 0.5),
+            health("GBP", 3, 0.2),
+            health("JPY", 2, 1.4),
+        ]);
+        let codes: Vec<&str> = sorted.iter().map(|h| h.code).collect();
+        assert_eq!(codes, vec!["GBP", "JPY", "EUR"]);
     }
 }

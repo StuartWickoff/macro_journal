@@ -82,7 +82,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .brand-copy strong { color: #e8ede7; font-size: 11px; letter-spacing: .14em; font-weight: 700; }
 .brand-copy span, .sidebar-section-label, .sidebar-version, .connection-row, .eyebrow,
 .document-kicker, .document-byline, .writing-label, .writing-footer, .stat-label,
-.search-shortcut, .research-card-type, .card-date, .method-step .step-number,
+.research-card-type, .card-date, .method-step .step-number,
 .sidebar-note > span:last-child, .art-caption {
   font: 500 9px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   letter-spacing: .075em;
@@ -109,17 +109,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .nav-item.active { color: #dbe8dd; background: rgba(158,195,170,.1); border-color: rgba(158,195,170,.14); }
 .nav-icon { width: 16px; text-align: center; color: #7d8c83; font-size: 16px; }
 .nav-item.active .nav-icon { color: var(--accent); }
-.nav-count {
-  min-width: 21px;
-  height: 21px;
-  margin-left: auto;
-  display: grid;
-  place-items: center;
-  border-radius: 6px;
-  background: rgba(158,195,170,.1);
-  color: var(--accent);
-  font: 10px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-}
 .sidebar-spacer { flex: 1; min-height: 30px; }
 .sidebar-note {
   margin: 0 5px 20px;
@@ -219,8 +208,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .button-primary:hover { border-color: #c2d9bd; background: #c2d9bd; }
 .button-quiet { border: 1px solid #35443c; background: #17211e; color: #c1ccc3; }
 .button-quiet:hover, .button-quiet.button-selected { border-color: #607764; background: #1c2c22; color: #dce8da; }
-.welcome-cta { min-height: 38px; margin-top: 21px; padding: 0 16px; }
-.welcome-cta > span { font-size: 17px; line-height: 1; }
 .welcome-art { position: absolute; top: 0; right: 2%; width: 39%; height: 100%; opacity: .8; }
 .art-orbit { position: absolute; top: 50%; left: 52%; border: 1px solid rgba(183,205,172,.17); border-radius: 50%; transform: translate(-50%,-50%) rotate(-24deg); }
 .orbit-one { width: 225px; height: 116px; }
@@ -278,7 +265,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .search-icon { color: #99aa9b; font-size: 19px; line-height: 1; }
 .search-box input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: #e0e7df; font-size: 10px; }
 .search-box input::placeholder { color: #77867c; }
-.search-shortcut { padding: 3px 4px; border: 1px solid #36443b; border-radius: 4px; color: #849188; font-size: 7px; white-space: nowrap; }
 .notes-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px; }
 .research-card {
   min-width: 0;
@@ -338,17 +324,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .method-step div { display: flex; flex-direction: column; gap: 4px; }
 .method-step strong { color: #d7dfd5; font-size: 10px; font-weight: 550; }
 .method-step div span { color: #86938a; font-size: 8px; line-height: 1.4; }
-.resources-card { padding: 15px 16px 5px; border: 1px solid var(--line); border-radius: 9px; background: #131a18; }
-.resources-card > .eyebrow { padding: 0 1px 5px; color: #8e9d92; font-size: 7px; }
-.resource-link { min-height: 57px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid #27322d; }
-.resource-link:last-child { border-bottom: 0; }
 .resource-mark { width: 27px; height: 27px; flex: 0 0 27px; display: grid; place-items: center; border-radius: 7px; background: rgba(158,195,170,.1); color: #b7cfb4; font-size: 13px; }
-.resource-mark-sand { background: rgba(215,188,140,.1); color: #d2b982; }
-.resource-link > span:nth-child(2) { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.resource-link strong { overflow: hidden; color: #d6ded7; font-size: 9px; font-weight: 550; text-overflow: ellipsis; white-space: nowrap; }
-.resource-link small { color: #849188; font-size: 8px; }
 .resource-arrow { margin-left: auto; color: #728176; font-size: 11px; transition: color .15s ease, transform .15s ease; }
-.resource-link:hover .resource-arrow { color: var(--accent); transform: translate(2px,-2px); }
 
 .editor-page { width: 100%; max-width: 1050px; margin: 0 auto; padding: 26px 42px 40px; }
 .editor-page-top { min-height: 42px; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; gap: 15px; }
@@ -451,7 +428,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .main-nav { flex-direction: row; overflow-x: auto; scrollbar-width: none; }
   .main-nav::-webkit-scrollbar { display: none; }
   .nav-item { width: auto; min-width: max-content; min-height: 34px; padding: 0 9px; gap: 7px; font-size: 10px; }
-  .nav-count { display: none; }
   .topbar { position: relative; height: 49px; flex-basis: 49px; padding: 0 14px; }
   .sidebar-toggle { width: 29px; height: 29px; flex-basis: 29px; }
   .topbar-start { gap: 10px; }
@@ -480,7 +456,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .research-card { min-height: 164px; }
   .guidance-column { grid-template-columns: 1fr; gap: 10px; }
   .method-card { padding: 16px; }
-  .resources-card { padding-right: 14px; padding-left: 14px; }
   .editor-page { padding: 17px 13px 27px; }
   .editor-page-top { align-items: flex-start; flex-direction: column; gap: 5px; }
   .editor-actions { width: 100%; justify-content: flex-end; gap: 6px; }
@@ -702,8 +677,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .currency-notes-heading .search-box { width: min(270px, 42%); }
 .currency-empty { min-height: 270px; }
 .document-flag { width: 28px; height: 19px; object-fit: cover; border: 1px solid rgba(67,82,66,.3); border-radius: 3px; }
-.unassigned-large-mark { width: 64px; height: 64px; flex: 0 0 64px; display: grid; place-items: center; border: 1px solid #647366; border-radius: 10px; background: #27332a; color: #c0d0b6; font-size: 22px; }
-.unassigned-page .currency-hero { margin-bottom: 28px; }
 
 @media (max-width: 1180px) {
   .currency-index-page, .currency-page { padding-right: 28px; padding-left: 28px; }
@@ -757,7 +730,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .currency-rates-card { min-height: 0; }
   .currency-notes-heading { align-items: stretch; flex-direction: column; gap: 12px; }
   .currency-notes-heading .search-box { width: 100%; }
-  .unassigned-large-mark { width: 51px; height: 51px; flex-basis: 51px; }
 }
 
 /* ===== Préparation hebdomadaire · veille ===== */

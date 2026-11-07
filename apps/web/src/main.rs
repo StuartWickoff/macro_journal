@@ -1469,7 +1469,6 @@ fn App() -> impl IntoView {
     let filtered_entries =
         move || entries_matching_filter(&entries.get(), &currency_filter.get(), &search.get());
     let section_title = move || match active_section.get().as_str() {
-        "overview" => "Vue générale",
         "journal" => "Notes à classer",
         "currencies" => selected_currency
             .get()
@@ -1495,13 +1494,6 @@ fn App() -> impl IntoView {
 
                 <div class="sidebar-section-label">"ESPACE DE TRAVAIL"</div>
                 <nav class="main-nav" aria-label="Navigation principale">
-                    <button class="nav-item" class:active=move || active_section.get() == "overview" on:click=move |_| {
-                        set_active_section.set("overview".to_string());
-                        set_selected_currency.set(None);
-                        set_editor_open.set(false);
-                    }>
-                        <span class="nav-icon">"⌂"</span><span>"Vue générale"</span>
-                    </button>
                     <button class="nav-item" class:active=move || active_section.get() == "journal" on:click=open_unassigned>
                         <span class="nav-icon">"▤"</span><span>"Notes à classer"</span>
                     </button>
@@ -1920,9 +1912,7 @@ fn App() -> impl IntoView {
                                 </section>
                             </section>
                         }.into_any()
-                    } else if active_section.get() == "currencies"
-                        || active_section.get() == "overview"
-                    {
+                    } else if active_section.get() == "currencies" {
                         view! {
                             <section class="currency-index-page">
                                 <div class="currency-index-intro">

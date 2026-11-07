@@ -792,3 +792,15 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .pack-textarea { flex: 1; min-height: 320px; resize: vertical; padding: 16px 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--ink); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; line-height: 1.55; }
 .pack-modal-foot { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
 .pack-modal-foot .pack-status { flex: none; margin-right: auto; flex-basis: auto; }
+
+/* ===== Notes à classer · hub de recherche unifié ===== */
+.journal-filter { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; padding: 14px 16px; border: 1px solid var(--line-soft); border-radius: 14px; background: var(--panel); }
+.journal-filter-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
+.journal-chip { display: inline-flex; align-items: center; gap: 7px; padding: 7px 12px; border: 1px solid var(--line-soft); border-radius: 999px; background: var(--panel-soft); color: var(--muted); font-size: 12px; font-weight: 600; cursor: pointer; transition: border-color .15s ease, background .15s ease, color .15s ease; }
+.journal-chip img { width: 16px; height: 16px; border-radius: 50%; object-fit: cover; }
+.journal-chip:hover { border-color: var(--accent); color: var(--ink); }
+.journal-chip.active { border-color: var(--accent); background: rgba(158, 195, 170, .16); color: var(--ink); }
+.journal-chip-unassigned { border-style: dashed; }
+.journal-chip-reset { padding: 7px 10px; border: none; background: none; color: var(--subtle); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; cursor: pointer; }
+.journal-chip-reset:hover { color: var(--ink); }
+.journal-filter-hint { font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--subtle); }

@@ -4,6 +4,7 @@ use leptos::task::spawn_local;
 use macro_journal_shared::{Entry, EntryDraft};
 use pulldown_cmark::{html, Event, Options, Parser};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use web_sys::wasm_bindgen::JsCast;
 
 const API_BASE: &str = "http://127.0.0.1:3000";
@@ -709,33 +710,23 @@ fn App() -> impl IntoView {
     let (sidebar_visible, set_sidebar_visible) = signal(true);
     let (cot_manifest, set_cot_manifest) =
         signal::<Option<Result<Vec<CotChartAsset>, String>>>(None);
+    let (currency_filter, set_currency_filter) = signal::<HashSet<String>>(HashSet::new());
 
     let load_entries = move |currency_code: String| {
         spawn_local(async move {
+            let still_selected = selected_currency.get().as_deref() == Some(currency_code.as_str())
+                && active_section.get() == "currencies";
             match fetch_entries(&currency_code).await {
-                Ok(items) => {
-                    let still_selected = selected_currency.get().as_deref()
-                        == Some(currency_code.as_str())
-                        && active_section.get() == "currencies";
-                    let still_unassigned =
-                        currency_code == "UNASSIGNED" && active_section.get() == "journal";
-                    if still_selected || still_unassigned {
-                        set_entries.set(items);
-                        set_save_status.set("BASE LOCALE · CONNECTÉE".to_string());
-                        set_api_status.set(true);
-                    }
+                Ok(items) if still_selected => {
+                    set_entries.set(items);
+                    set_save_status.set("BASE LOCALE · CONNECTÉE".to_string());
+                    set_api_status.set(true);
                 }
-                Err(error) => {
-                    let still_selected = selected_currency.get().as_deref()
-                        == Some(currency_code.as_str())
-                        && active_section.get() == "currencies";
-                    let still_unassigned =
-                        currency_code == "UNASSIGNED" && active_section.get() == "journal";
-                    if still_selected || still_unassigned {
-                        set_save_status.set(format!("API INDISPONIBLE · {error}"));
-                        set_api_status.set(false);
-                    }
+                Err(error) if still_selected => {
+                    set_save_status.set(format!("API INDISPONIBLE · {error}"));
+                    set_api_status.set(false);
                 }
+                _ => {}
             }
         });
     };
@@ -772,6 +763,7 @@ fn App() -> impl IntoView {
         set_selected_currency.set(Some(code.to_string()));
         set_editor_open.set(false);
         set_search.set(String::new());
+        set_currency_filter.set(HashSet::new());
         set_entries.set(Vec::new());
         load_entries(code.to_string());
     };
@@ -781,8 +773,38 @@ fn App() -> impl IntoView {
         set_selected_currency.set(None);
         set_editor_open.set(false);
         set_search.set(String::new());
+        set_currency_filter.set(HashSet::new());
         set_entries.set(Vec::new());
-        load_entries("UNASSIGNED".to_string());
+        spawn_local(async move {
+            match fetch_all_entries().await {
+                Ok(items) => {
+                    if active_section.get() == "journal" {
+                        set_entries.set(items);
+                        set_save_status.set("BASE LOCALE · CONNECTÉE".to_string());
+                        set_api_status.set(true);
+                    }
+                }
+                Err(error) => {
+                    if active_section.get() == "journal" {
+                        set_save_status.set(format!("API INDISPONIBLE · {error}"));
+                        set_api_status.set(false);
+                    }
+                }
+            }
+        });
+    };
+
+    let toggle_currency_filter = move |code: &'static str| {
+        set_currency_filter.update(|selected| {
+            if selected.contains(code) {
+                selected.remove(code);
+            } else {
+                selected.insert(code.to_string());
+            }
+        });
+    };
+    let clear_currency_filter = move |_| {
+        set_currency_filter.set(HashSet::new());
     };
 
     let save_note = move |_| {
@@ -837,18 +859,8 @@ fn App() -> impl IntoView {
 
     let preview_html = move || render_markdown(&content.get());
     let character_count = move || content.get().chars().count();
-    let filtered_entries = move || {
-        let query = search.get().trim().to_lowercase();
-        entries
-            .get()
-            .into_iter()
-            .filter(|entry| {
-                query.is_empty()
-                    || entry.title.to_lowercase().contains(&query)
-                    || entry.content.to_lowercase().contains(&query)
-            })
-            .collect::<Vec<_>>()
-    };
+    let filtered_entries =
+        move || entries_matching_filter(&entries.get(), &currency_filter.get(), &search.get());
     let section_title = move || match active_section.get().as_str() {
         "overview" => "Vue générale",
         "journal" => "Notes à classer",
@@ -1391,7 +1403,7 @@ fn App() -> impl IntoView {
 
                                 <button class="unassigned-link" on:click=open_unassigned>
                                     <span class="unassigned-mark">"↗"</span>
-                                    <span><strong>"Notes à classer"</strong><small>"Retrouver les anciennes notes qui n’étaient pas associées à une devise."</small></span>
+                                    <span><strong>"Notes à classer"</strong><small>"Toutes vos recherches, toutes devises : filtrez par devise, cherchez à l'intérieur."</small></span>
                                     <span class="currency-card-arrow">"→"</span>
                                 </button>
                             </section>
@@ -1401,9 +1413,9 @@ fn App() -> impl IntoView {
                             <section class="dashboard-page">
                                 <div class="welcome-banner">
                                     <div class="welcome-copy">
-                                        <div class="eyebrow"><span class="eyebrow-dot"></span> "ARCHIVE HISTORIQUE · SANS DEVISE ASSOCIÉE"</div>
-                                        <h1>"Notes à classer."<br/><span>"Votre historique est conservé."</span></h1>
-                                        <p>"Ces notes précèdent le classement par devise. Elles restent ici, intactes ; toute nouvelle analyse commence dans son dossier dédié."</p>
+                                        <div class="eyebrow"><span class="eyebrow-dot"></span> "HUB DE RECHERCHE · TOUTES DEVISES"</div>
+                                        <h1>"Toutes vos recherches."<br/><span>"Cherchez à travers chaque devise."</span></h1>
+                                        <p>"Chaque analyse vit dans son dossier de devise : elles se retrouvent toutes ici, notes à classer comprises. Sélectionnez une ou plusieurs devises, puis cherchez à l'intérieur."</p>
                                     </div>
                                     <div class="welcome-art" aria-hidden="true">
                                         <div class="art-orbit orbit-one"></div>
@@ -1417,9 +1429,9 @@ fn App() -> impl IntoView {
 
                                 <div class="stats-grid">
                                     <article class="stat-card">
-                                        <div class="stat-label"><span class="stat-icon">"▤"</span> "DANS CETTE ARCHIVE"</div>
+                                        <div class="stat-label"><span class="stat-icon">"▤"</span> "TOUTES DEVISES"</div>
                                         <div class="stat-value">{move || entries.get().len()}</div>
-                                        <div class="stat-detail">"notes sans devise associée"</div>
+                                        <div class="stat-detail">"notes, dossiers et à classer confondus"</div>
                                     </article>
                                     <article class="stat-card">
                                         <div class="stat-label"><span class="stat-icon stat-icon-sand">"◷"</span> "DERNIÈRE ACTIVITÉ"</div>
@@ -1441,9 +1453,9 @@ fn App() -> impl IntoView {
                                     <section class="research-section">
                                         <div class="section-heading">
                                             <div>
-                                                <div class="eyebrow">"VOTRE HISTORIQUE"</div>
-                                                <h2>"Anciennes notes"</h2>
-                                                <p>"Aucune note n’est réaffectée automatiquement à une devise."</p>
+                                                <div class="eyebrow">"TOUTES DEVISES · RECHERCHE"</div>
+                                                <h2>"Recherchez dans toutes vos notes"</h2>
+                                                <p>"Aucune sélection de devise = tout voir. Le filtre et la recherche se combinent."</p>
                                             </div>
                                             <label class="search-box">
                                                 <span class="search-icon" aria-hidden="true">"⌕"</span>
@@ -1457,13 +1469,53 @@ fn App() -> impl IntoView {
                                             </label>
                                         </div>
 
+                                        <div class="journal-filter">
+                                            <div class="journal-filter-chips">
+                                                <For
+                                                    each=move || {
+                                                        CURRENCIES.to_vec()
+                                                    }
+                                                    key=|currency| currency.code
+                                                    children=move |currency| {
+                                                        let code = currency.code;
+                                                        view! {
+                                                            <button
+                                                                class="journal-chip"
+                                                                class:active=move || currency_filter.get().contains(code)
+                                                                on:click=move |_| toggle_currency_filter(code)
+                                                            >
+                                                                <img src=format!("/flags/{}.png", currency.flag) alt=currency.code/>
+                                                                <span>{currency.code}</span>
+                                                            </button>
+                                                        }
+                                                    }
+                                                />
+                                                <button
+                                                    class="journal-chip journal-chip-unassigned"
+                                                    class:active=move || currency_filter.get().contains("UNASSIGNED")
+                                                    on:click=move |_| toggle_currency_filter("UNASSIGNED")
+                                                >
+                                                    <span>"À classer"</span>
+                                                </button>
+                                                <button class="journal-chip-reset" on:click=clear_currency_filter>"Tout"</button>
+                                            </div>
+                                            <span class="journal-filter-hint">{move || {
+                                                let selected = currency_filter.get();
+                                                if selected.is_empty() {
+                                                    "AUCUNE SÉLECTION · TOUTES LES NOTES".to_string()
+                                                } else {
+                                                    format!("{} DEVISE(S) SÉLECTIONNÉE(S)", selected.len())
+                                                }
+                                            }}</span>
+                                        </div>
+
                                         <Show
                                             when=move || !filtered_entries().is_empty()
                                             fallback=move || view! {
                                                 <div class="empty-journal">
                                                     <div class="empty-journal-icon">{move || if entries.get().is_empty() { "✳" } else { "⌕" }}</div>
-                                                    <h3>{move || if entries.get().is_empty() { "Aucune ancienne note à classer." } else { "Aucune note ne correspond à cette recherche." }}</h3>
-                                                    <p>{move || if entries.get().is_empty() { "Les notes créées à partir de maintenant seront enregistrées dans le dossier de la devise concernée.".to_string() } else { "Essayez un autre mot-clé ou effacez votre recherche.".to_string() }}</p>
+                                                    <h3>{move || if entries.get().is_empty() { "Aucune note en base." } else { "Aucune note pour cette sélection." }}</h3>
+                                                    <p>{move || if entries.get().is_empty() { "Les notes créées à partir de maintenant seront enregistrées dans le dossier de la devise concernée.".to_string() } else { "Essayez un autre mot-clé, ou ajustez le filtre de devises.".to_string() }}</p>
                                                 </div>
                                             }
                                         >
@@ -1474,6 +1526,12 @@ fn App() -> impl IntoView {
                                                     children=move |entry| {
                                                         let note_title = entry.title.clone();
                                                         let note_content = entry.content.clone();
+                                                        let note_currency = entry.currency_code.clone();
+                                                        let note_badge = if note_currency == "UNASSIGNED" {
+                                                            "À CLASSER".to_string()
+                                                        } else {
+                                                            format!("{} · ANALYSE", note_currency)
+                                                        };
                                                         let updated = entry.updated_at.clone();
                                                         let snippet = preview_text(&entry.content);
                                                         view! {
@@ -1481,6 +1539,13 @@ fn App() -> impl IntoView {
                                                                 class="research-card"
                                                                 on:click=move |_| {
                                                                     set_active_id.set(Some(entry.id));
+                                                                    set_selected_currency.set(
+                                                                        if note_currency == "UNASSIGNED" {
+                                                                            None
+                                                                        } else {
+                                                                            Some(note_currency.clone())
+                                                                        },
+                                                                    );
                                                                     set_title.set(note_title.clone());
                                                                     set_content.set(note_content.clone());
                                                                     set_editor_open.set(true);
@@ -1490,7 +1555,7 @@ fn App() -> impl IntoView {
                                                                 }
                                                             >
                                                                 <div class="research-card-top">
-                                                                    <span class="research-card-type"><span>"✳"</span> "ANALYSE"</span>
+                                                                    <span class="research-card-type"><span>"✳"</span> {note_badge}</span>
                                                                     <span class="card-arrow" aria-hidden="true">"↗"</span>
                                                                 </div>
                                                                 <h3>{entry.title.clone()}</h3>
@@ -2552,6 +2617,36 @@ async fn fetch_entries(currency_code: &str) -> Result<Vec<Entry>, String> {
         .map_err(|error| error.to_string())
 }
 
+async fn fetch_all_entries() -> Result<Vec<Entry>, String> {
+    let response = Request::get(&format!("{API_BASE}/api/entries"))
+        .send()
+        .await
+        .map_err(|error| error.to_string())?;
+    if !response.ok() {
+        return Err(format!("API returned HTTP {}", response.status()));
+    }
+    response
+        .json::<Vec<Entry>>()
+        .await
+        .map_err(|error| error.to_string())
+}
+
+/// Notes visibles dans le hub « notes à classer » : aucune devise
+/// sélectionnée = toutes ; sinon uniquement les devises choisies
+/// (UNASSIGNED inclus). La requête porte sur le titre et le contenu.
+fn entries_matching_filter(all: &[Entry], selected: &HashSet<String>, query: &str) -> Vec<Entry> {
+    let query = query.trim().to_lowercase();
+    all.iter()
+        .filter(|entry| {
+            (selected.is_empty() || selected.contains(&entry.currency_code))
+                && (query.is_empty()
+                    || entry.title.to_lowercase().contains(&query)
+                    || entry.content.to_lowercase().contains(&query))
+        })
+        .cloned()
+        .collect()
+}
+
 async fn fetch_cot_manifest() -> Result<Vec<CotChartAsset>, String> {
     let response = Request::get("/cot/manifest.json")
         .send()
@@ -2880,5 +2975,89 @@ mod veille_tests {
         assert!(pack.contains("risk-on"));
         assert!(pack.contains("https://tradingeconomics.com/calendar"));
         assert!(pack.contains("- EUR — dernière observation 2026-10-27"));
+    }
+}
+
+/// Garde-fous du hub de recherche de l'onglet notes à classer.
+#[cfg(test)]
+mod journal_filter_tests {
+    use super::*;
+
+    fn entry(id: i64, currency_code: &str, title: &str, content: &str) -> Entry {
+        Entry {
+            id,
+            currency_code: currency_code.to_string(),
+            title: title.to_string(),
+            content: content.to_string(),
+            created_at: "2026-11-01T10:00:00Z".to_string(),
+            updated_at: "2026-11-01T10:00:00Z".to_string(),
+        }
+    }
+
+    fn selected(codes: &[&str]) -> HashSet<String> {
+        codes.iter().map(|code| (*code).to_string()).collect()
+    }
+
+    #[test]
+    fn empty_selection_returns_every_note() {
+        let all = vec![
+            entry(1, "USD", "Élections US", "Analyse du vote."),
+            entry(2, "EUR", "HICP", "Inflation sous-jacente."),
+            entry(3, "UNASSIGNED", "À trier", "Brouillon."),
+        ];
+        let visible = entries_matching_filter(&all, &selected(&[]), "");
+        assert_eq!(visible.len(), 3);
+    }
+
+    #[test]
+    fn multi_currency_selection_filters_both() {
+        let all = vec![
+            entry(1, "USD", "Élections US", "Analyse du vote."),
+            entry(2, "EUR", "HICP", "Inflation sous-jacente."),
+            entry(3, "GBP", "MPC", "Vote de la Bank."),
+            entry(4, "UNASSIGNED", "À trier", "Brouillon."),
+        ];
+        let visible = entries_matching_filter(&all, &selected(&["USD", "EUR"]), "");
+        let ids: Vec<i64> = visible.iter().map(|entry| entry.id).collect();
+        assert_eq!(ids, vec![1, 2]);
+    }
+
+    #[test]
+    fn unassigned_chip_selects_only_unassigned_notes() {
+        let all = vec![
+            entry(1, "USD", "Élections US", "Analyse du vote."),
+            entry(2, "UNASSIGNED", "À trier", "Brouillon."),
+        ];
+        let visible = entries_matching_filter(&all, &selected(&["UNASSIGNED"]), "");
+        let ids: Vec<i64> = visible.iter().map(|entry| entry.id).collect();
+        assert_eq!(ids, vec![2]);
+    }
+
+    #[test]
+    fn search_applies_within_selected_currencies() {
+        let all = vec![
+            entry(1, "USD", "Élections US", "Le taux franchit la borne haute."),
+            entry(2, "EUR", "HICP", "Un taux d'inflation qui Surprend."),
+        ];
+        let visible = entries_matching_filter(&all, &selected(&["USD"]), "taux");
+        assert_eq!(visible.len(), 1);
+        assert_eq!(visible[0].id, 1);
+    }
+
+    #[test]
+    fn search_matches_title_or_content_case_insensitively() {
+        let all = vec![
+            entry(1, "USD", "Élections US", "Analyse du vote."),
+            entry(2, "EUR", "HICP", "Inflation sous-jacente."),
+        ];
+        assert_eq!(
+            entries_matching_filter(&all, &selected(&[]), "élections")[0].id,
+            1
+        );
+        assert_eq!(
+            entries_matching_filter(&all, &selected(&[]), "INFLATION")[0].id,
+            2
+        );
+        assert!(entries_matching_filter(&all, &selected(&[]), "inexistant").is_empty());
     }
 }

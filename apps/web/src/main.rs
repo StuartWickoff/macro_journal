@@ -33,6 +33,19 @@ struct EconomicObservation {
     value_secondary: Option<f64>,
 }
 
+/// Une ligne du fichier de contrôle qualité des données (verdicts.csv) :
+/// fiabilité de l'historique d'une série, par bloc de dates, avec la
+/// preuve. Affichée telle quelle — les corrections restent dans le fichier.
+#[derive(Clone, Debug, Deserialize)]
+struct DataVerdict {
+    currency: String,
+    series_id: String,
+    block1: String,
+    block2: String,
+    verdict: String,
+    evidence: String,
+}
+
 #[derive(Clone, Copy)]
 struct EconomicIndicator {
     id: &'static str,
@@ -744,6 +757,191 @@ fn build_fiche_content(code: &str, checked: &HashSet<String>, conclusion: &str) 
         content.push('\n');
     }
     content
+}
+
+/// Le bilan hebdomadaire : quatre questions du rituel, dans l'ordre du
+/// cours. Rien de coché de façon machinale — l'utilisateur écrit.
+const BILAN_QUESTIONS: [(&str, &str); 4] = [
+    ("attendu", "Ce que j'attendais"),
+    ("surprise", "La surprise de la semaine"),
+    ("corriger", "Ce que je corrige dans ma méthode"),
+    ("lecon", "La leçon de la semaine"),
+];
+
+/// Titre de la note bilan : la devise visée, ou « à classer » quand le
+/// bilan porte sur toute la cartographie.
+fn bilan_title(code: &str) -> String {
+    if code == "UNASSIGNED" {
+        "Bilan semaine (à classer)".to_string()
+    } else {
+        format!("Bilan semaine {code}")
+    }
+}
+
+/// Markdown du bilan : une section par question ; une section laissée
+/// vide reste visible flaguée « Rien d'écrit. » plutôt que supprimée —
+/// ce qui manque doit se voir.
+fn build_bilan_content(code: &str, answers: &[String]) -> String {
+    let mut content = format!("# {}\n\n", bilan_title(code));
+    for ((_, label), answer) in BILAN_QUESTIONS.iter().zip(answers.iter()) {
+        content.push_str(&format!("## {label}\n"));
+        let trimmed = answer.trim();
+        if trimmed.is_empty() {
+            content.push_str("« Rien d'écrit. »\n");
+        } else {
+            content.push_str(trimmed);
+            content.push('\n');
+        }
+        content.push('\n');
+    }
+    content
+}
+
+/// Ordre de lecture stable du tableau : devise puis série.
+fn sort_verdicts(mut verdicts: Vec<DataVerdict>) -> Vec<DataVerdict> {
+    verdicts.sort_by(|a, b| {
+        a.currency
+            .cmp(&b.currency)
+            .then_with(|| a.series_id.cmp(&b.series_id))
+    });
+    verdicts
+}
+
+async fn fetch_verdicts() -> Result<Vec<DataVerdict>, String> {
+    let response = Request::get(&format!("{API_BASE}/api/verdicts"))
+        .send()
+        .await
+        .map_err(|error| error.to_string())?;
+
+    if !response.ok() {
+        return Err(format!("API returned HTTP {}", response.status()));
+    }
+
+    response
+        .json::<Vec<DataVerdict>>()
+        .await
+        .map_err(|error| error.to_string())
+}
+
+/// Onglet « Bilans » : le rituel du week-end (quatre questions en note,
+/// dossier choisi à l'enregistrement) et la fiabilité des données lue
+/// dans le fichier de verdicts — corrections dans le fichier, jamais ici.
+#[component]
+fn ReviewsSection() -> impl IntoView {
+    let (verdicts, set_verdicts) = signal::<Option<Result<Vec<DataVerdict>, String>>>(None);
+    let (bilan_currency, set_bilan_currency) = signal("UNASSIGNED".to_string());
+    let (answers, set_answers) = signal::<Vec<String>>(vec![String::new(); 4]);
+    let (bilan_status, set_bilan_status) = signal(String::new());
+
+    spawn_local(async move {
+        set_verdicts.set(Some(fetch_verdicts().await));
+    });
+
+    let save_bilan = move |_| {
+        set_bilan_status.set("ENREGISTREMENT…".to_string());
+        let code = bilan_currency.get();
+        let answers = answers.get();
+        spawn_local(async move {
+            let draft = EntryDraft {
+                title: bilan_title(&code),
+                content: build_bilan_content(&code, &answers),
+            };
+            match create_entry(&code, draft).await {
+                Ok(entry) => set_bilan_status.set(format!(
+                    "ENREGISTRÉ DANS LE DOSSIER {code} · {}",
+                    format_date(&entry.updated_at)
+                )),
+                Err(error) => set_bilan_status.set(format!("ÉCHEC DE L'ENREGISTREMENT · {error}")),
+            }
+        });
+    };
+
+    view! {
+        <section class="bilan-page">
+            <div class="bilan-intro">
+                <div class="eyebrow"><span class="eyebrow-dot"></span> "BILANS · RITUEL DE FIN DE SEMAINE"</div>
+                <h1>"Ce que j'ai pensé contre ce qui s'est passé."</h1>
+                <p>"Le bilan n'est pas un livre de comptes : c'est là que la méthode progresse. Écrivez ce que vos thèses attendaient, ce qui les a contrariées, ce que vous corrigez, ce qui reste à apprendre — la note part dans le dossier de votre choix."</p>
+            </div>
+
+            <div class="bilan-form">
+                <div class="bilan-row">
+                    <label>
+                        <span class="eyebrow">"DOSSIER DE LA NOTE"</span>
+                        <select prop:value=move || bilan_currency.get() on:change=move |event| set_bilan_currency.set(event_target_value(&event))>
+                            <option value="UNASSIGNED">"À classer"</option>
+                            {CURRENCIES.iter().map(|currency| view! { <option value={currency.code}>{format!("{} · {}", currency.code, currency.name)}</option> }).collect::<Vec<_>>()}
+                        </select>
+                    </label>
+                </div>
+
+                {BILAN_QUESTIONS.iter().enumerate().map(|(index, (_, question_label))| {
+                    view! {
+                        <div class="bilan-question">
+                            <span class="eyebrow">{*question_label}</span>
+                            <textarea
+                                rows=3
+                                prop:value=move || answers.get().get(index).cloned().unwrap_or_default()
+                                on:input=move |event| {
+                                    let value = event_target_value(&event);
+                                    set_answers.update(|list| {
+                                        if let Some(slot) = list.get_mut(index) { *slot = value; }
+                                    });
+                                }
+                            ></textarea>
+                        </div>
+                    }
+                }).collect::<Vec<_>>()}
+                <footer class="bilan-foot">
+                    <span class="force-status">{move || bilan_status.get()}</span>
+                    <button class="button button-primary" on:click=save_bilan>
+                        "Enregistrer le bilan"
+                    </button>
+                </footer>
+            </div>
+
+            <div class="bilan-verdicts">
+                <header class="bilan-verdicts-head">
+                    <div>
+                        <div class="eyebrow"><span class="eyebrow-dot"></span> "FIABILITÉ DES DONNÉES"</div>
+                        <h2>"Sur quoi repose votre lecture ?"</h2>
+                    </div>
+                    <p>"Lu dans le fichier de verdicts du pipeline de recherche (route lecture seule). Les corrections se font dans le fichier, jamais ici — c'est votre point E."</p>
+                </header>
+
+                {move || match verdicts.get() {
+                    None => view! { <p class="force-status">"Lecture du fichier de verdicts…"</p> }.into_any(),
+                    Some(Err(error)) => view! {
+                        <p class="force-status">{format!("Verdicts indisponibles · {error} — redémarrer le serveur ?")}</p>
+                    }.into_any(),
+                    Some(Ok(list)) => view! {
+                        <div class="bilan-grid">
+                            <div class="bilan-grid-head">
+                                <span>"DEVISE"</span>
+                                <span>"SÉRIE"</span>
+                                <span>"BLOC 2023-11 → 2024-12"</span>
+                                <span>"BLOC 2025-01 → 2026-10"</span>
+                                <span>"VERDICT"</span>
+                                <span>"PREUVE"</span>
+                            </div>
+                            {sort_verdicts(list).into_iter().map(|verdict| {
+                                view! {
+                                    <div class="bilan-row-item" class:bilan-wrong=verdict.verdict == "WRONG" class:bilan-warn=verdict.verdict == "WARN">
+                                        <span><strong>{verdict.currency.clone()}</strong></span>
+                                        <span>{verdict.series_id.clone()}</span>
+                                        <span>{verdict.block1.clone()}</span>
+                                        <span>{verdict.block2.clone()}</span>
+                                        <span class="bilan-verdict-badge">{verdict.verdict.clone()}</span>
+                                        <small>{verdict.evidence.clone()}</small>
+                                    </div>
+                                }
+                            }).collect::<Vec<_>>()}
+                        </div>
+                    }.into_any(),
+                }}
+            </div>
+        </section>
+    }
 }
 
 /// Onglet « Préparation hebdomadaire » : les liens du rituel de veille,
@@ -2005,6 +2203,10 @@ fn App() -> impl IntoView {
                     } else if active_section.get() == "pairs" {
                         view! {
                             <PairsSection/>
+                        }.into_any()
+                    } else if active_section.get() == "reviews" {
+                        view! {
+                            <ReviewsSection/>
                         }.into_any()
                     } else {
                         view! {
@@ -3545,5 +3747,72 @@ mod pairs_tests {
         let sorted = sort_healths(healths);
         let codes: Vec<&str> = sorted.iter().map(|health| health.code).collect();
         assert_eq!(codes, vec!["USD", "EUR", "JPY"]);
+    }
+}
+
+/// Garde-fous du bilan hebdomadaire (onglet Bilans).
+#[cfg(test)]
+mod bilans_tests {
+    use super::*;
+
+    #[test]
+    fn bilan_title_targets_currency_or_unassigned() {
+        assert_eq!(bilan_title("USD"), "Bilan semaine USD");
+        assert_eq!(bilan_title("UNASSIGNED"), "Bilan semaine (à classer)");
+    }
+
+    #[test]
+    fn build_bilan_content_keeps_every_section() {
+        let answers = vec![
+            "Le dollar devait rester ferme.".to_string(),
+            "Le CPI a surpris au-dessus.".to_string(),
+            String::new(),
+            "Attendre le pricing avant la paire.".to_string(),
+        ];
+        let content = build_bilan_content("USD", &answers);
+        assert!(content.contains("# Bilan semaine USD"));
+        assert!(content.contains("## Ce que j'attendais"));
+        assert!(content.contains("Le CPI a surpris au-dessus."));
+        assert!(content.contains("## Ce que je corrige dans ma méthode"));
+        assert!(content.contains("« Rien d'écrit. »"));
+        assert!(content.contains("Attendre le pricing avant la paire."));
+    }
+
+    #[test]
+    fn build_bilan_content_flags_blank_sections_only() {
+        let answers = vec![String::new(); 4];
+        let content = build_bilan_content("UNASSIGNED", &answers);
+        assert!(content.contains("# Bilan semaine (à classer)"));
+        assert_eq!(content.matches("« Rien d'écrit. »").count(), 4);
+        assert!(!content.contains("Attendre"));
+    }
+
+    #[test]
+    fn sort_verdicts_orders_by_currency_then_series() {
+        let verdict = |currency: &str, series: &str| DataVerdict {
+            currency: currency.to_string(),
+            series_id: series.to_string(),
+            block1: "OK".to_string(),
+            block2: "OK".to_string(),
+            verdict: "OK".to_string(),
+            evidence: String::new(),
+        };
+        let sorted = sort_verdicts(vec![
+            verdict("USD", "policy_rate"),
+            verdict("EUR", "hicp_core_yoy"),
+            verdict("EUR", "hicp_headline_yoy"),
+        ]);
+        let keys: Vec<(String, String)> = sorted
+            .iter()
+            .map(|v| (v.currency.clone(), v.series_id.clone()))
+            .collect();
+        assert_eq!(
+            keys,
+            vec![
+                ("EUR".to_string(), "hicp_core_yoy".to_string()),
+                ("EUR".to_string(), "hicp_headline_yoy".to_string()),
+                ("USD".to_string(), "policy_rate".to_string()),
+            ]
+        );
     }
 }

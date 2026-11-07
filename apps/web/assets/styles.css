@@ -832,3 +832,29 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .fiche-conclusion textarea { min-height: 120px; resize: vertical; padding: 13px 15px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--ink); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; line-height: 1.55; }
 .fiche-foot { display: flex; align-items: center; justify-content: flex-end; gap: 12px; flex-wrap: wrap; }
 .fiche-foot .force-status { margin-right: auto; }
+
+/* ===== Bilans · rituel du week-end + fiabilité des données ===== */
+.bilan-page { max-width: 1120px; margin: 40px auto 60px; padding: 0 34px; display: flex; flex-direction: column; gap: 20px; }
+.bilan-intro h1 { margin: 8px 0 10px; font-size: 30px; line-height: 1.15; }
+.bilan-intro p { margin: 0; max-width: 700px; color: var(--muted); font-size: 14px; line-height: 1.55; }
+.bilan-form { display: flex; flex-direction: column; gap: 14px; padding: 22px 24px; border: 1px solid var(--line); border-radius: 18px; background: var(--panel-raised); }
+.bilan-row label { display: flex; flex-direction: column; gap: 7px; }
+.bilan-row select { padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--ink); font-size: 13px; max-width: 320px; }
+.bilan-question { display: flex; flex-direction: column; gap: 7px; }
+.bilan-question textarea { min-height: 88px; resize: vertical; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--ink); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; line-height: 1.55; }
+.bilan-foot { display: flex; align-items: center; justify-content: flex-end; gap: 12px; flex-wrap: wrap; margin-top: 2px; }
+.bilan-foot .force-status { margin-right: auto; }
+.bilan-verdicts { display: flex; flex-direction: column; gap: 14px; }
+.bilan-verdicts-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; flex-wrap: wrap; }
+.bilan-verdicts-head h2 { margin: 8px 0 0; font-size: 21px; }
+.bilan-verdicts-head p { margin: 0; max-width: 460px; color: var(--subtle); font-size: 11.5px; line-height: 1.55; }
+.bilan-grid { display: flex; flex-direction: column; gap: 7px; }
+.bilan-grid-head, .bilan-row-item { display: grid; grid-template-columns: .8fr 1.6fr 1.05fr 1.05fr .75fr 2.4fr; gap: 10px; padding: 10px 14px; border-radius: 12px; align-items: start; }
+.bilan-grid-head { color: var(--subtle); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; }
+.bilan-row-item { border: 1px solid var(--line-soft); background: var(--panel); font-size: 12.5px; color: var(--ink); }
+.bilan-row-item small { color: var(--muted); font-size: 11px; line-height: 1.5; }
+.bilan-row-item.bilan-wrong { border-color: rgba(206, 124, 124, .55); background: rgba(206, 124, 124, .07); }
+.bilan-row-item.bilan-warn { border-color: rgba(214, 172, 108, .45); }
+.bilan-verdict-badge { justify-self: start; padding: 3px 9px; border-radius: 999px; font-size: 10px; font-weight: 700; letter-spacing: .1em; background: rgba(154, 168, 160, .14); color: var(--muted); }
+.bilan-row-item.bilan-wrong .bilan-verdict-badge { background: rgba(206, 124, 124, .2); color: #d38f8f; }
+.bilan-row-item.bilan-warn .bilan-verdict-badge { background: rgba(214, 172, 108, .18); color: #d8c29a; }

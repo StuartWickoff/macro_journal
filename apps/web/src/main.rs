@@ -2,7 +2,7 @@ use gloo_net::http::Request;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use macro_journal_shared::{Entry, EntryDraft};
-use pulldown_cmark::{html, Event, Options, Parser};
+use pulldown_cmark::{html, Event, Options, Parser, Tag, TagEnd};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use web_sys::wasm_bindgen::JsCast;
@@ -3172,19 +3172,75 @@ fn format_date(timestamp: &str) -> String {
     }
 }
 
+fn push_inline_preview(target: &mut String, addition: &str) {
+    let addition = addition.trim();
+    if addition.is_empty() {
+        return;
+    }
+    if !target.is_empty() && !target.ends_with(' ') {
+        target.push(' ');
+    }
+    target.push_str(addition);
+}
+
+/// Aperçu d'une note pour les cartes du hub : le markdown est aplati,
+/// mais chaque bloc (titre, paragraphe, élément de liste, cellule de
+/// tableau) forme une section séparée — sinon le libellé de la section
+/// colle à la réponse écrite juste en dessous.
 fn preview_text(source: &str) -> String {
-    let text = Parser::new(source)
-        .filter_map(|event| match event {
-            Event::Text(text) | Event::Code(text) => Some(text.to_string()),
-            Event::SoftBreak | Event::HardBreak => Some(" ".to_string()),
-            _ => None,
-        })
-        .collect::<String>()
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ");
-    let preview = text.chars().take(150).collect::<String>();
-    if text.chars().count() > 150 {
+    /// Séparateur d'aperçu entre deux blocs.
+    const PREVIEW_SEPARATOR: &str = " · ";
+
+    fn flush_segment(current: &mut String, segments: &mut Vec<String>) {
+        let trimmed = current.trim();
+        if !trimmed.is_empty() {
+            segments.push(trimmed.to_string());
+        }
+        current.clear();
+    }
+
+    let mut segments: Vec<String> = Vec::new();
+    let mut current = String::new();
+    let mut options = Options::empty();
+    options.insert(Options::ENABLE_TASKLISTS);
+    for event in Parser::new_ext(source, options) {
+        match event {
+            Event::Text(text) => push_inline_preview(&mut current, &text),
+            Event::Code(code) => push_inline_preview(&mut current, &code),
+            // Case manuelle des fiches (checklist) : rendue littéralement,
+            // attachée au libellé qui suit.
+            Event::TaskListMarker(complete) => {
+                current.push_str(if complete { "[x] " } else { "[ ] " });
+            }
+            Event::SoftBreak | Event::HardBreak => {
+                if !current.is_empty() && !current.ends_with(' ') {
+                    current.push(' ');
+                }
+            }
+            Event::Start(tag) => match tag {
+                Tag::Emphasis
+                | Tag::Strong
+                | Tag::Strikethrough
+                | Tag::Link { .. }
+                | Tag::Image { .. } => {}
+                _ => flush_segment(&mut current, &mut segments),
+            },
+            Event::End(tag_end) => match tag_end {
+                TagEnd::Emphasis
+                | TagEnd::Strong
+                | TagEnd::Strikethrough
+                | TagEnd::Link
+                | TagEnd::Image => {}
+                _ => flush_segment(&mut current, &mut segments),
+            },
+            _ => {}
+        }
+    }
+    flush_segment(&mut current, &mut segments);
+
+    let joined = segments.join(PREVIEW_SEPARATOR);
+    let preview = joined.chars().take(150).collect::<String>();
+    if joined.chars().count() > 150 {
         format!("{preview}…")
     } else {
         preview
@@ -3814,5 +3870,41 @@ mod bilans_tests {
                 ("USD".to_string(), "policy_rate".to_string()),
             ]
         );
+    }
+}
+
+/// Régression : ce que vous avez vu collé dans les bilans du hub.
+#[cfg(test)]
+mod preview_tests {
+    use super::*;
+
+    #[test]
+    fn preview_text_separates_bilan_sections() {
+        let source = "# Bilan semaine USD\n\n## Ce que j'attendais\nUSD fort\n\n## La surprise\nDémocrates US\n\n## La leçon\nÉviter la suranalyse\n";
+        assert_eq!(
+            preview_text(source),
+            "Bilan semaine USD · Ce que j'attendais · USD fort · La surprise · Démocrates US · La leçon · Éviter la suranalyse"
+        );
+    }
+
+    #[test]
+    fn preview_text_keeps_fiche_list_items_separate() {
+        let source =
+            "# Fiche analyse USD\n\n## Fondamentaux purs\n\n- [x] Banque centrale : décision traitée\n- [ ] Inflation\n\n## Ma conclusion\n\nÀ surveiller après le CPI.\n";
+        assert_eq!(
+            preview_text(source),
+            "Fiche analyse USD · Fondamentaux purs · [x] Banque centrale : décision traitée · [ ] Inflation · Ma conclusion · À surveiller après le CPI."
+        );
+    }
+
+    #[test]
+    fn preview_text_cuts_long_notes_with_ellipsis() {
+        let mut source = String::new();
+        for _ in 0..40 {
+            source.push_str("abcde ");
+        }
+        let preview = preview_text(&source);
+        assert!(preview.ends_with('…'), "{}", preview);
+        assert!(preview.starts_with("abcde"));
     }
 }

@@ -181,7 +181,11 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/verdicts", get(list_verdicts))
         .route(
             "/api/economic/{currency_code}/observations/{series_id}",
-            post(add_economic_observation),
+            post(add_economic_observation).put(update_economic_observation),
+        )
+        .route(
+            "/api/economic/{currency_code}/observations/{series_id}/{date}",
+            axum::routing::delete(delete_economic_observation),
         )
         .fallback_service(static_files)
         .layer(cors)
@@ -377,9 +381,20 @@ async fn add_economic_observation(
             .cmp(&right.series_id)
             .then_with(|| left.date.cmp(&right.date))
     });
+    write_economic_history(&path, &observations).await?;
 
+    Ok((StatusCode::CREATED, Json(observation)))
+}
+
+/// Publication atomique de l'historique : écriture dans un `.tmp` puis
+/// rename, pour ne jamais laisser un CSV à moitié écrit. Appelé sous le
+/// verrou `economic_io_lock` (section critique read-modify-write).
+async fn write_economic_history(
+    path: &std::path::Path,
+    observations: &[EconomicObservation],
+) -> Result<(), ApiFailure> {
     let mut csv = String::from("series_id,date,value,value_secondary\n");
-    for row in &observations {
+    for row in observations {
         csv.push_str(&format!(
             "{},{},{},{}\n",
             row.series_id,
@@ -393,24 +408,75 @@ async fn add_economic_observation(
     let temporary_path = path.with_extension("csv.tmp");
     if let Some(parent) = path.parent() {
         tokio::fs::create_dir_all(parent).await.map_err(|error| {
-            error!(?error, currency = %currency_code, "Could not create the economic-data directory");
+            error!(?error, path = %path.display(), "Could not create the economic-data directory");
             ApiFailure::internal("Economic data could not be saved.")
         })?;
     }
     tokio::fs::write(&temporary_path, csv)
         .await
         .map_err(|error| {
-            error!(?error, currency = %currency_code, "Could not write temporary economic history");
+            error!(?error, path = %temporary_path.display(), "Could not write temporary economic history");
             ApiFailure::internal("Economic data could not be saved.")
         })?;
     tokio::fs::rename(&temporary_path, &path)
         .await
         .map_err(|error| {
-            error!(?error, currency = %currency_code, "Could not publish economic history");
+            error!(?error, path = %path.display(), "Could not publish economic history");
             ApiFailure::internal("Economic data could not be saved.")
         })?;
+    Ok(())
+}
 
-    Ok((StatusCode::CREATED, Json(observation)))
+/// Corrige une coordonnée existante (série + date) : remplace sa valeur
+/// (et sa valeur secondaire) sans toucher au reste de l'historique.
+/// 404 si la coordonnée est absente — l'édition ne crée jamais de
+/// fantôme ; l'ajout reste le rôle du POST ci-dessus.
+async fn update_economic_observation(
+    State(state): State<AppState>,
+    Path((currency_code, series_id)): Path<(String, String)>,
+    Json(draft): Json<EconomicObservationDraft>,
+) -> Result<Json<EconomicObservation>, ApiFailure> {
+    let path = economic_history_path(&state.economic_data_root, &currency_code)?;
+    validate_economic_observation(&currency_code, &series_id, &draft)?;
+    let _io_guard = state.economic_io_lock.lock().await;
+    let mut observations = read_economic_history(&path, &currency_code).await?;
+    let exists = observations
+        .iter()
+        .any(|row| row.series_id == series_id && row.date == draft.date);
+    if !exists {
+        return Err(ApiFailure::not_found());
+    }
+    let observation = EconomicObservation {
+        series_id,
+        date: draft.date,
+        value: draft.value,
+        value_secondary: draft.value_secondary,
+    };
+    for row in observations
+        .iter_mut()
+        .filter(|row| row.series_id == observation.series_id && row.date == observation.date)
+    {
+        *row = observation.clone();
+    }
+    write_economic_history(&path, &observations).await?;
+    Ok(Json(observation))
+}
+
+/// Retire une coordonnée (série + date) de l'historique. 404 si absente.
+async fn delete_economic_observation(
+    State(state): State<AppState>,
+    Path((currency_code, series_id, date)): Path<(String, String, String)>,
+) -> Result<StatusCode, ApiFailure> {
+    let path = economic_history_path(&state.economic_data_root, &currency_code)?;
+    let _io_guard = state.economic_io_lock.lock().await;
+    let mut observations = read_economic_history(&path, &currency_code).await?;
+    let before = observations.len();
+    observations.retain(|row| !(row.series_id == series_id && row.date == date));
+    if observations.len() == before {
+        return Err(ApiFailure::not_found());
+    }
+    write_economic_history(&path, &observations).await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 fn retain_latest_three_years(observations: &mut Vec<EconomicObservation>) {
@@ -1069,7 +1135,11 @@ mod tests {
             )
             .route(
                 "/api/economic/{currency_code}/observations/{series_id}",
-                post(add_economic_observation),
+                post(add_economic_observation).put(update_economic_observation),
+            )
+            .route(
+                "/api/economic/{currency_code}/observations/{series_id}/{date}",
+                axum::routing::delete(delete_economic_observation),
             )
             .with_state(AppState {
                 pool,
@@ -1130,6 +1200,23 @@ mod tests {
         .header(header::CONTENT_TYPE, "application/json")
         .body(Body::from(body.to_string()))
         .unwrap()
+    }
+
+    fn update_economic_observation_request(
+        series_id: &str,
+        date: &str,
+        value: f64,
+        value_secondary: Option<f64>,
+    ) -> Request<Body> {
+        let body = serde_json::json!({
+            "date": date,
+            "value": value,
+            "value_secondary": value_secondary,
+        });
+        Request::put(format!("/api/economic/USD/observations/{series_id}"))
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(body.to_string()))
+            .unwrap()
     }
 
     async fn body_string(response: axum::response::Response) -> String {
@@ -1332,6 +1419,132 @@ mod tests {
             std::fs::read_to_string(economic_history_path(dir.path(), "USD").unwrap())
                 .unwrap()
                 .contains("unemployment_rate,2026-10-01,4.1,")
+        );
+    }
+
+    #[tokio::test]
+    async fn economic_observation_edit_replaces_a_coordinate_without_ghosts() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = test_app(dir.path()).await;
+
+        for (date, value) in [("2026-09-01", 4.4), ("2026-10-01", 4.2)] {
+            let created = app
+                .clone()
+                .oneshot(add_economic_observation_request(
+                    "unemployment_rate",
+                    date,
+                    value,
+                    None,
+                ))
+                .await
+                .unwrap();
+            assert_eq!(created.status(), StatusCode::CREATED);
+        }
+
+        let edited = app
+            .clone()
+            .oneshot(update_economic_observation_request(
+                "unemployment_rate",
+                "2026-09-01",
+                4.3,
+                None,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(edited.status(), StatusCode::OK);
+        let edited = serde_json::from_str::<serde_json::Value>(&body_string(edited).await).unwrap();
+        assert_eq!(edited["value"], 4.3);
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::get("/api/economic/USD/observations")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let rows: serde_json::Value = serde_json::from_str(&body_string(response).await).unwrap();
+        assert_eq!(rows.as_array().unwrap().len(), 2);
+        let history =
+            std::fs::read_to_string(economic_history_path(dir.path(), "USD").unwrap()).unwrap();
+        assert!(history.contains("unemployment_rate,2026-09-01,4.3,"));
+        assert!(history.contains("unemployment_rate,2026-10-01,4.2,"));
+
+        // Éditer une coordonnée absente reste un 404, pas une creation.
+        let unknown = app
+            .clone()
+            .oneshot(update_economic_observation_request(
+                "unemployment_rate",
+                "2025-01-01",
+                4.0,
+                None,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(unknown.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn economic_observation_delete_removes_only_that_coordinate() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = test_app(dir.path()).await;
+
+        for (date, value) in [("2026-09-01", 4.4), ("2026-10-01", 4.2)] {
+            let created = app
+                .clone()
+                .oneshot(add_economic_observation_request(
+                    "unemployment_rate",
+                    date,
+                    value,
+                    None,
+                ))
+                .await
+                .unwrap();
+            assert_eq!(created.status(), StatusCode::CREATED);
+        }
+
+        let removed = app
+            .clone()
+            .oneshot(
+                Request::delete("/api/economic/USD/observations/unemployment_rate/2026-10-01")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(removed.status(), StatusCode::NO_CONTENT);
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::get("/api/economic/USD/observations")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let rows: serde_json::Value = serde_json::from_str(&body_string(response).await).unwrap();
+        let remaining = rows.as_array().unwrap();
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(remaining[0]["date"], "2026-09-01");
+
+        // Re-supprimer la meme coordonnée (ou une série fantôme) : 404.
+        for unknown in [
+            Request::delete("/api/economic/USD/observations/unemployment_rate/2026-10-01")
+                .body(Body::empty())
+                .unwrap(),
+            Request::delete("/api/economic/USD/observations/ghost_series/2026-09-01")
+                .body(Body::empty())
+                .unwrap(),
+        ] {
+            let absent = app.clone().oneshot(unknown).await.unwrap();
+            assert_eq!(absent.status(), StatusCode::NOT_FOUND);
+        }
+        assert!(
+            std::fs::read_to_string(economic_history_path(dir.path(), "USD").unwrap())
+                .unwrap()
+                .contains("unemployment_rate,2026-09-01,4.4,")
         );
     }
 

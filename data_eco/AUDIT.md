@@ -1,15 +1,15 @@
 # AUDIT.md — Audit automatisé de `data_eco/`
 
-Rapport de contrôle actualisé le 08/11/2026 après quatrième passe (paire MRR/DFR du taux directeur EUR + PPI zone euro de septembre). Le script `audit.py` a été renforcé ; exécuter `python3 audit.py` depuis `data_eco/` pour régénérer ce rapport. Les points de contrôle sont des références manuelles : le script ne télécharge pas les sources.
+Rapport de contrôle actualisé le 08/11/2026 après quatrième passe (paire MRR/DFR du taux directeur EUR + PPI zone euro de septembre) puis cinquième passe (complétion des finales PMI S&P Global eurozone, novembre 2023 → janvier 2025, depuis les archives Investing.com via Wayback Machine croisées avec les communiqués S&P Global/Reuters). Le script `audit.py` a été renforcé ; exécuter `python3 audit.py` depuis `data_eco/` pour régénérer ce rapport. Les points de contrôle sont des références manuelles : le script ne télécharge pas les sources.
 
 ## Résultat global
 
-- **Exécution du script le 08/11/2026 : 0 erreur structurelle** (échantillon : 1431 observations)
-- Avertissements : 21 (historiques PMI partiels toutes devises, quatre séries CHF/NZD non collectées, PPI canadien partiel)
+- **Exécution du script le 08/11/2026 : 0 erreur structurelle** (échantillon : 1461 observations)
+- Avertissements : 19 (historiques PMI partiels : GBP, JPY, CHF, CAD, AUD ; quatre séries CHF/NZD non collectées ; PPI canadien partiel — les 2 avertissements PMI EUR ont disparu)
 - Journal de collecte cohérent : 69 entrées, `n_obs`/`first`/`last` alignés sur les CSV
 - Contrôles : structure, schéma (value_secondary vide), dates (1ᵉʳ jour du mois/trimestre), unicité, fenêtre, inventaire des séries, plausibilité, points de contrôle externes, cohérence du journal de collecte.
 
-Total : **1431 observations** sur 8 devises.
+Total : **1461 observations** sur 8 devises.
 
 ## Points de contrôle externes
 
@@ -47,8 +47,8 @@ Total : **1431 observations** sur 8 devises.
 | `hicp_headline_yoy` | 36 | 2026-10 | — |
 | `policy_rate` | 36 | 2026-10 | — |
 | `ppi_yoy` | 35 | 2026-09 | 2026-10 |
-| `sp_global_manufacturing_pmi` | 2 | 2026-10 | 2023-11, 2023-12, 2024-01, 2024-02, 2024-03, 2024-04, 2024-05, 2024-06, 2024-07, 2024-08, 2024-09, 2024-10, 2024-11, 2024-12, 2025-01, 2025-02, 2025-03, 2025-04, 2025-05, 2025-06, 2025-07, 2025-08, 2025-09, 2025-10, 2025-11, 2025-12, 2026-01, 2026-02, 2026-03, 2026-04, 2026-05, 2026-06, 2026-07, 2026-08 |
-| `sp_global_services_pmi` | 3 | 2026-10 | 2023-11, 2023-12, 2024-01, 2024-02, 2024-03, 2024-04, 2024-05, 2024-06, 2024-07, 2024-08, 2024-09, 2024-10, 2024-11, 2024-12, 2025-01, 2025-02, 2025-03, 2025-04, 2025-05, 2025-06, 2025-07, 2025-08, 2025-09, 2025-10, 2025-11, 2025-12, 2026-01, 2026-02, 2026-03, 2026-04, 2026-05, 2026-06, 2026-07 |
+| `sp_global_manufacturing_pmi` | 17 | 2026-10 | 2025-02, 2025-03, 2025-04, 2025-05, 2025-06, 2025-07, 2025-08, 2025-09, 2025-10, 2025-11, 2025-12, 2026-01, 2026-02, 2026-03, 2026-04, 2026-05, 2026-06, 2026-07, 2026-08 |
+| `sp_global_services_pmi` | 18 | 2026-10 | 2025-02, 2025-03, 2025-04, 2025-05, 2025-06, 2025-07, 2025-08, 2025-09, 2025-10, 2025-11, 2025-12, 2026-01, 2026-02, 2026-03, 2026-04, 2026-05, 2026-06, 2026-07 |
 | `unemployment_rate` | 35 | 2026-09 | 2026-10 |
 
 > `policy_rate` : depuis le 08/11/2026, paire BCE — taux de refinancement MRR (valeur) et facilité de dépôt (secondaire), en vigueur le 1ᵉʳ jour du mois.

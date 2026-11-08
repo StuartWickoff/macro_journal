@@ -162,8 +162,12 @@ for currency in CURS:
         if not sid:
             fail(f"{location}: series_id vide")
             continue
+        dual_rate = currency == "eur" and sid == "policy_rate"
         if secondary.strip():
-            fail(f"{location}: value_secondary doit rester vide")
+            if not dual_rate:
+                fail(f"{location}: value_secondary doit rester vide")
+        elif dual_rate:
+            fail(f"{location}: paire MRR/DFR incomplète : value_secondary vide")
         try:
             observation_date = dt.date.fromisoformat(date_text)
             if observation_date.isoformat() != date_text or observation_date.day != 1:
@@ -178,6 +182,17 @@ for currency in CURS:
         except ValueError:
             fail(f"{location}: valeur non numérique ou non finie ({value_text!r})")
             continue
+
+        if dual_rate:
+            try:
+                deposit = float(secondary)
+                if not math.isfinite(deposit):
+                    raise ValueError
+            except ValueError:
+                fail(f"{location}: value_secondary non numérique ({secondary!r})")
+            else:
+                if deposit >= value:
+                    fail(f"{location}: facilité de dépôt ({secondary}) doit rester inférieure au taux de refinancement ({value_text})")
 
         key = (sid, date_text)
         if key in seen:

@@ -738,11 +738,12 @@ fn validate_economic_observation(
     {
         return Err(ApiFailure::bad_request("Values must be finite numbers."));
     }
-    let has_secondary = currency_code == "USD"
+    let has_secondary = (currency_code == "USD"
         && matches!(
             series_id,
             "cpi_inflation" | "fed_target_range" | "pce_inflation" | "ppi_inflation"
-        );
+        ))
+        || (currency_code == "EUR" && series_id == "policy_rate");
     if draft.value_secondary.is_some() != has_secondary {
         return Err(ApiFailure::bad_request(
             "This indicator has an invalid number of values.",

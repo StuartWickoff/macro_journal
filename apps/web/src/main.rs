@@ -2974,6 +2974,11 @@ fn economic_indicator(currency_code: &str, id: &str) -> Option<EconomicIndicator
         "sp_global_manufacturing_pmi" | "ratingdog_manufacturing_pmi" => "PMI",
         _ => "PMI services",
     };
+    let primary_label = if currency_code == "EUR" && id == "policy_rate" {
+        "Taux de refinancement"
+    } else {
+        primary_label
+    };
     let note = match (currency_code, id) {
         ("EUR", "hicp_headline_yoy" | "hicp_core_yoy") => {
             "Indice des prix à la consommation harmonisé (IPCH/HICP) de la zone euro; mesures harmonisées et comparables entre pays."
@@ -3001,6 +3006,9 @@ fn economic_indicator(currency_code: &str, id: &str) -> Option<EconomicIndicator
         }
         ("CNY", "ratingdog_manufacturing_pmi" | "ratingdog_services_pmi") => {
             "PMI final publié par S&P Global sous la marque RatingDog (anciennement Caixin) depuis août 2025. Au-dessus de 50, l’activité est généralement en expansion."
+        }
+        ("EUR", "policy_rate") => {
+            "Paire BCE : taux de refinancement des principales opérations (principal) et taux de la facilité de dépôt (secondaire), en vigueur au premier jour du mois."
         }
         (_, "policy_rate") => {
             "Taux directeur en vigueur au premier jour du mois; aucune observation quotidienne n’est nécessaire pour l’historique mensuel."
@@ -3054,7 +3062,11 @@ fn economic_indicator(currency_code: &str, id: &str) -> Option<EconomicIndicator
         source_url,
         note,
         primary_label,
-        secondary_label: None,
+        secondary_label: if currency_code == "EUR" && id == "policy_rate" {
+            Some("Facilité de dépôt")
+        } else {
+            None
+        },
         quarterly,
     })
 }

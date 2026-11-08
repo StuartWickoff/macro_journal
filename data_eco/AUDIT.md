@@ -1,15 +1,15 @@
 # AUDIT.md — Audit automatisé de `data_eco/`
 
-Rapport de contrôle actualisé le 04/11/2026 après troisième passe. Le script `audit.py` a été renforcé ; exécuter `python3 audit.py` depuis `data_eco/` pour régénérer ce rapport. Les points de contrôle sont des références manuelles : le script ne télécharge pas les sources.
+Rapport de contrôle actualisé le 08/11/2026 après quatrième passe (paire MRR/DFR du taux directeur EUR + PPI zone euro de septembre). Le script `audit.py` a été renforcé ; exécuter `python3 audit.py` depuis `data_eco/` pour régénérer ce rapport. Les points de contrôle sont des références manuelles : le script ne télécharge pas les sources.
 
 ## Résultat global
 
-- **Exécution du script après la troisième passe : non effectuée ici**
-- Avertissements attendus à la prochaine exécution : 17 (PMI avec moins de 12 observations, quatre séries CHF/NZD non collectées et PPI canadien partiel)
-- Les contrôles structurels devront être confirmés par `python3 audit.py` sur le dépôt cloné
+- **Exécution du script le 08/11/2026 : 0 erreur structurelle** (échantillon : 1431 observations)
+- Avertissements : 21 (historiques PMI partiels toutes devises, quatre séries CHF/NZD non collectées, PPI canadien partiel)
+- Journal de collecte cohérent : 69 entrées, `n_obs`/`first`/`last` alignés sur les CSV
 - Contrôles : structure, schéma (value_secondary vide), dates (1ᵉʳ jour du mois/trimestre), unicité, fenêtre, inventaire des séries, plausibilité, points de contrôle externes, cohérence du journal de collecte.
 
-Total : **1430 observations** sur 8 devises.
+Total : **1431 observations** sur 8 devises.
 
 ## Points de contrôle externes
 
@@ -26,6 +26,7 @@ Total : **1430 observations** sur 8 devises.
 | CNY | `gdp_qoq` | 2026-07-01 | 1.2 | 1.2 | NBS T3 2026 | OK |
 | CNY | `gdp_yoy` | 2026-07-01 | 4.5 | 4.5 | NBS T3 2026 | OK |
 | CHF | `cpi_headline_yoy` | 2026-10-01 | 1.5 | 1.5 | OFS 03/11/2026 | OK |
+| CHF | `cpi_core_yoy` | 2026-10-01 | 0.5 | 0.5 | OFS 03/11/2026 | OK |
 | AUD | `policy_rate` | 2026-10-01 | 4.6 | 4.6 | RBA (4,85 % le 04/11, hors fenêtre) | OK |
 | CAD | `unemployment_rate` | 2026-09-01 | 6.5 | 6.5 | StatCan LFS 09/10/2026 | OK |
 | CAD | `ppi_yoy` | 2026-09-01 | 14.5 | 14.5 | Statistics Canada, The Daily 22/10/2026 | OK |
@@ -45,10 +46,12 @@ Total : **1430 observations** sur 8 devises.
 | `hicp_core_yoy` | 36 | 2026-10 | — |
 | `hicp_headline_yoy` | 36 | 2026-10 | — |
 | `policy_rate` | 36 | 2026-10 | — |
-| `ppi_yoy` | 34 | 2026-08 | 2026-09, 2026-10 |
+| `ppi_yoy` | 35 | 2026-09 | 2026-10 |
 | `sp_global_manufacturing_pmi` | 2 | 2026-10 | 2023-11, 2023-12, 2024-01, 2024-02, 2024-03, 2024-04, 2024-05, 2024-06, 2024-07, 2024-08, 2024-09, 2024-10, 2024-11, 2024-12, 2025-01, 2025-02, 2025-03, 2025-04, 2025-05, 2025-06, 2025-07, 2025-08, 2025-09, 2025-10, 2025-11, 2025-12, 2026-01, 2026-02, 2026-03, 2026-04, 2026-05, 2026-06, 2026-07, 2026-08 |
 | `sp_global_services_pmi` | 3 | 2026-10 | 2023-11, 2023-12, 2024-01, 2024-02, 2024-03, 2024-04, 2024-05, 2024-06, 2024-07, 2024-08, 2024-09, 2024-10, 2024-11, 2024-12, 2025-01, 2025-02, 2025-03, 2025-04, 2025-05, 2025-06, 2025-07, 2025-08, 2025-09, 2025-10, 2025-11, 2025-12, 2026-01, 2026-02, 2026-03, 2026-04, 2026-05, 2026-06, 2026-07 |
 | `unemployment_rate` | 35 | 2026-09 | 2026-10 |
+
+> `policy_rate` : depuis le 08/11/2026, paire BCE — taux de refinancement MRR (valeur) et facilité de dépôt (secondaire), en vigueur le 1ᵉʳ jour du mois.
 
 ### GBP
 | Série | Obs. | Dernière | Manquant |
@@ -141,4 +144,4 @@ Total : **1430 observations** sur 8 devises.
 
 ## Cohérence `_fetch_log.json` ↔ CSV
 
-68 entrées, une par série ; n_obs / first / last cohérents avec les CSV.
+69 entrées, une par série ; `n_obs` / `first` / `last` cohérents avec les CSV (exécution du 08/11/2026 : 0 écart).

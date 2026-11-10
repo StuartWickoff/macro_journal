@@ -2363,15 +2363,14 @@ fn EconomicDashboard(currency_code: &'static str) -> impl IntoView {
         };
         let indicator =
             economic_indicator(save_currency, &series_id).expect("selected indicator is known");
-        let parsed_value = value.get().trim().parse::<f64>();
-        let Ok(parsed_value) = parsed_value else {
+        let Some(parsed_value) = parse_economic_number(&value.get()) else {
             set_save_status.set("Saisissez une valeur numérique valide.".to_string());
             return;
         };
         let parsed_secondary = if indicator.secondary_label.is_some() {
-            match secondary_value.get().trim().parse::<f64>() {
-                Ok(number) => Some(number),
-                Err(_) => {
+            match parse_economic_number(&secondary_value.get()) {
+                Some(number) => Some(number),
+                None => {
                     set_save_status.set("Saisissez également la seconde valeur.".to_string());
                     return;
                 }
@@ -2606,22 +2605,26 @@ fn EconomicDashboard(currency_code: &'static str) -> impl IntoView {
                                                     <label>
                                                         <span>{indicator.primary_label}</span>
                                                         <input
-                                                            type="number"
-                                                            step=if indicator.decimals == 0 { "1" } else { "any" }
+                                                            type="text"
+                                                            inputmode="decimal"
+                                                            autocomplete="off"
                                                             required
                                                             prop:value=move || value.get()
                                                             on:input=move |event| set_value.set(event_target_value(&event))
+                                                            on:keydown=move |event| handle_economic_arrow(event, set_value, indicator)
                                                         />
                                                     </label>
                                                     {indicator.secondary_label.map(|label| view! {
                                                         <label>
                                                             <span>{label}</span>
                                                             <input
-                                                                type="number"
-                                                                step=if indicator.decimals == 0 { "1" } else { "any" }
+                                                                type="text"
+                                                                inputmode="decimal"
+                                                                autocomplete="off"
                                                                 required
                                                                 prop:value=move || secondary_value.get()
                                                                 on:input=move |event| set_secondary_value.set(event_target_value(&event))
+                                                                on:keydown=move |event| handle_economic_arrow(event, set_secondary_value, indicator)
                                                             />
                                                         </label>
                                                     })}
@@ -2649,10 +2652,10 @@ fn EconomicDashboard(currency_code: &'static str) -> impl IntoView {
                                                     let capture_series = row_owned.series_id.clone();
                                                     let edit_currency = currency_code;
                                                     let display_date = economic_period_label(indicator, &row_owned.date);
-                                                    let draft_value = row_owned.value.to_string();
+                                                    let draft_value = row_owned.value.to_string().replace('.', ",");
                                                     let draft_secondary = row_owned
                                                         .value_secondary
-                                                        .map(|value| value.to_string())
+                                                        .map(|value| value.to_string().replace('.', ","))
                                                         .unwrap_or_default();
                                                     let (editing, set_editing) = signal(false);
                                                     let (input_value, set_input_value) = signal(draft_value);
@@ -2663,14 +2666,14 @@ fn EconomicDashboard(currency_code: &'static str) -> impl IntoView {
                                                     let save_series = capture_series.clone();
                                                     let save_row = move |event: leptos::ev::SubmitEvent| {
                                                         event.prevent_default();
-                                                        let Ok(value) = input_value.get().trim().replace(',', ".").parse::<f64>() else {
+                                                        let Some(value) = parse_economic_number(&input_value.get()) else {
                                                             set_row_status.set("Valeur numérique invalide.".to_string());
                                                             return;
                                                         };
                                                         let secondary = if indicator.secondary_label.is_some() {
-                                                            match input_secondary.get().trim().parse::<f64>() {
-                                                                Ok(number) => Some(number),
-                                                                Err(_) => {
+                                                            match parse_economic_number(&input_secondary.get()) {
+                                                                Some(number) => Some(number),
+                                                                None => {
                                                                     set_row_status.set("Saisissez également la seconde valeur.".to_string());
                                                                     return;
                                                                 }
@@ -2734,22 +2737,26 @@ fn EconomicDashboard(currency_code: &'static str) -> impl IntoView {
                                                                     <label>
                                                                         <span>{indicator.primary_label}</span>
                                                                         <input
-                                                                            type="number"
-                                                                            step="any"
+                                                                            type="text"
+                                                                            inputmode="decimal"
+                                                                            autocomplete="off"
                                                                             required
                                                                             prop:value=move || input_value.get()
                                                                             on:input=move |event| set_input_value.set(event_target_value(&event))
+                                                                            on:keydown=move |event| handle_economic_arrow(event, set_input_value, indicator)
                                                                         />
                                                                     </label>
                                                                     {indicator.secondary_label.map(|label| view! {
                                                                         <label>
                                                                             <span>{label}</span>
                                                                             <input
-                                                                                type="number"
-                                                                                step="any"
+                                                                                type="text"
+                                                                                inputmode="decimal"
+                                                                                autocomplete="off"
                                                                                 required
                                                                                 prop:value=move || input_secondary.get()
                                                                                 on:input=move |event| set_input_secondary.set(event_target_value(&event))
+                                                                                on:keydown=move |event| handle_economic_arrow(event, set_input_secondary, indicator)
                                                                             />
                                                                         </label>
                                                                     })}
@@ -3231,6 +3238,51 @@ fn format_economic_value(value: f64, indicator: EconomicIndicator) -> String {
     } else {
         format!("{number} {}", indicator.unit)
     }
+}
+
+/// Saisie numérique économique : tolère la virgule française comme séparateur décimal.
+fn parse_economic_number(raw: &str) -> Option<f64> {
+    raw.trim().replace(',', ".").parse::<f64>().ok()
+}
+
+/// Pas d'incrément des champs de saisie : 1 pour les séries entières (payrolls), 0,1 sinon.
+fn economic_input_step(indicator: EconomicIndicator) -> f64 {
+    if indicator.decimals == 0 {
+        1.0
+    } else {
+        0.1
+    }
+}
+
+/// Valeur réécrite dans un champ de saisie après ajustement ↑/↓, à l'affichage français (virgule).
+fn step_economic_input(raw: &str, direction: f64, indicator: EconomicIndicator) -> String {
+    let base = parse_economic_number(raw).unwrap_or(0.0);
+    let next = base + direction * economic_input_step(indicator);
+    let formatted = format!("{next:.precision$}", precision = indicator.decimals);
+    if indicator.id == "nonfarm_payrolls" {
+        formatted
+    } else {
+        formatted.replace('.', ",")
+    }
+}
+
+/// Handler clavier des champs numériques économiques : ↑/↓ ajustent la saisie
+/// de 0,1 (ou 1 pour les valeurs entières) ; ⇧×10 ; le champ texte libre devient
+/// l'unique canal de saisie car un `type="number"` contrôlé rejette les frappes
+/// « 52, » (valeur badInput incompatible avec les séparateurs décimaux).
+fn handle_economic_arrow(
+    event: leptos::ev::KeyboardEvent,
+    setter: leptos::prelude::WriteSignal<String>,
+    indicator: EconomicIndicator,
+) {
+    let multiplier = if event.shift_key() { 10.0 } else { 1.0 };
+    let direction = match event.key().as_str() {
+        "ArrowUp" => 1.0,
+        "ArrowDown" => -1.0,
+        _ => return,
+    };
+    event.prevent_default();
+    setter.update(|raw| *raw = step_economic_input(raw, direction * multiplier, indicator));
 }
 
 fn render_economic_chart(
